@@ -24,6 +24,8 @@ Everyone on the team has their own login.
 3. **Sign in.** Approved people sign in with email and password and stay signed in for 7 days.
 
 The admin page also lets an admin make someone an admin, reset a forgotten password, or switch a person off (they are signed out immediately).
+**Making yourself an admin:** register on the sign-in page, then run `npm run make-admin -- you@example.com` where the app's `DATABASE_URL` is set
+(on Railway: `railway run npm run make-admin -- you@example.com`). It approves the account and makes it an admin. Or sign in once with the admin key and use the Admin page.
 The shared `ADMIN_API_KEY` keeps working as an always-admin login, so you can never lock yourself out. Passwords are stored only as salted scrypt hashes; sessions
 are random tokens whose hashes are stored; sign-in and registration are rate limited. Every approval, rejection and role change is written to the audit log.
 Actions in the app (like a status change) are recorded under the signed-in person's name.

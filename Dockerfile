@@ -15,6 +15,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/scripts ./scripts
 RUN npx prisma generate
 EXPOSE 4100
 # The database is new and owned by this app, so applying migrations on start is the right thing here.
