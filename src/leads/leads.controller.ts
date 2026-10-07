@@ -24,11 +24,14 @@ export class LeadsController {
   private parseQuery(query: Record<string, string | undefined>) {
     const int = (v?: string) => (v !== undefined && /^\d{1,9}$/.test(v) ? Number(v) : undefined);
     const { platform, since, stage } = query;
+    const code = (v: string | undefined, re: RegExp) => (v && re.test(v) ? v : undefined);
     const sinceDate = since ? new Date(since) : undefined;
     return {
       platform: platform && (Object.values(Platform) as string[]).includes(platform) ? (platform as Platform) : undefined,
       stage: stage && (Object.values(PartnerStage) as string[]).includes(stage) ? (stage as PartnerStage) : undefined,
       since: sinceDate && !Number.isNaN(sinceDate.getTime()) ? sinceDate : undefined,
+      country: code(query.country, /^[A-Za-z]{2}$/)?.toUpperCase(),
+      language: code(query.language, /^[A-Za-z]{2,3}$/)?.toLowerCase(),
       q: query.q?.slice(0, 100),
       limit: int(query.limit),
       offset: int(query.offset),

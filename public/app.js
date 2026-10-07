@@ -46,6 +46,13 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 const STAGES = [['FOUND', 'Found'], ['CONTACTED', 'Contacted'], ['IN_PROGRESS', 'In progress'], ['REGISTERED', 'Registered'], ['DECLINED', 'Declined']];
+// Every country and a broad set of languages, named by the browser from their ISO codes, so filters list them all.
+const COUNTRY_CODES = 'AF AX AL DZ AS AD AO AI AQ AG AR AM AW AU AT AZ BS BH BD BB BY BE BZ BJ BM BT BO BQ BA BW BV BR IO BN BG BF BI CV KH CM CA KY CF TD CL CN CX CC CO KM CG CD CK CR CI HR CU CW CY CZ DK DJ DM DO EC EG SV GQ ER EE SZ ET FK FO FJ FI FR GF PF TF GA GM GE DE GH GI GR GL GD GP GU GT GG GN GW GY HT HM VA HN HK HU IS IN ID IR IQ IE IM IL IT JM JP JE JO KZ KE KI KP KR KW KG LA LV LB LS LR LY LI LT LU MO MG MW MY MV ML MT MH MQ MR MU YT MX FM MD MC MN ME MS MA MZ MM NA NR NP NL NC NZ NI NE NG NU NF MK MP NO OM PK PW PS PA PG PY PE PH PN PL PT PR QA RE RO RU RW BL SH KN LC MF PM VC WS SM ST SA SN RS SC SL SG SX SK SI SB SO ZA GS SS ES LK SD SR SJ SE CH SY TW TJ TZ TH TL TG TK TO TT TN TR TM TC TV UG UA AE GB US UM UY UZ VU VE VN VG VI WF EH YE ZM ZW'.split(' ');
+const LANGUAGE_CODES = 'af sq am ar hy az eu be bn bs bg my ca zh hr cs da nl en et fil fi fr gl ka de el gu ha he hi hu is ig id ga it ja kn kk km rw ko ku ky lo lv lt lb mk mg ms ml mt mi mr mn ne no or ps fa pl pt pa ro ru sm sr sn sd si sk sl so es sw sv tg ta te th ti tr tk uk ur uz vi cy xh yo zu'.split(' ');
+const names = (type, codes) => { let dn = null; try { dn = new Intl.DisplayNames(['en'], { type }); } catch { /* old browser */ }
+  return codes.map((c) => { let n = c; try { n = (dn && dn.of(c)) || c; } catch { /* keep the code */ } return [c, n]; }).sort((a, b) => a[1].localeCompare(b[1])); };
+const COUNTRIES = names('region', COUNTRY_CODES);
+const LANGUAGES = names('language', LANGUAGE_CODES);
 const STAGE_LABEL = Object.fromEntries(STAGES);
 const STAGE_CLASS = { FOUND: '', CONTACTED: 'warn', IN_PROGRESS: 'warn', REGISTERED: 'good', DECLINED: 'bad' };
 const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'FACEBOOK', 'REDDIT', 'TELEGRAM', 'WEBSITE'];
@@ -109,7 +116,9 @@ function filterBar() {
   const search = h('input', { type: 'search', placeholder: 'Search name, handle, bio', value: state.filters.q || '', onchange: (e) => { if (e.target.value.trim()) state.filters.q = e.target.value.trim(); else delete state.filters.q; state.offset = 0; renderTab(); } });
   const stage = h('select', { 'aria-label': 'Stage', onchange: (e) => { if (e.target.value) state.filters.stage = e.target.value; else delete state.filters.stage; state.offset = 0; renderTab(); } },
     h('option', { value: '' }, 'Any stage'), STAGES.map(([k, label]) => h('option', { value: k, selected: state.filters.stage === k }, label)));
-  return h('div', { class: 'filters' }, search, platform, stage);
+  const pick = (key, label, options) => h('select', { 'aria-label': label, onchange: (e) => { if (e.target.value) state.filters[key] = e.target.value; else delete state.filters[key]; state.offset = 0; renderTab(); } },
+    h('option', { value: '' }, label), options.map(([v, n]) => h('option', { value: v, selected: state.filters[key] === v }, n)));
+  return h('div', { class: 'filters' }, search, platform, stage, pick('country', 'Any country', COUNTRIES), pick('language', 'Any language', LANGUAGES));
 }
 
 function leadCard(l) {
@@ -139,12 +148,12 @@ async function act(fn, okMsg) {
 function detail(l) {
   const link = safeUrl(l.url);
   const email = h('input', { type: 'email', value: l.contactEmail || '', placeholder: 'name@example.com', id: 'f-email' });
-  const country = h('input', { value: l.country || '', maxlength: 2, size: 3, placeholder: 'KE', id: 'f-country' });
+  const country = h('select', { id: 'f-country' }, h('option', { value: '' }, 'Unknown'), COUNTRIES.map(([v, n]) => h('option', { value: v, selected: (l.country || '').toUpperCase() === v }, n)));
   const bio = h('textarea', { id: 'f-bio' }); bio.value = l.bio || '';
   return h('div', { class: 'card' },
     h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: closeDetail }, 'Close')),
     h('h2', {}, l.displayName),
-    h('div', { class: 'meta' }, l.platform + ' · ' + num(l.followers) + ' followers · ' + (l.country || 'country unknown') + ' · found via ' + l.source),
+    h('div', { class: 'meta' }, l.platform + ' · ' + num(l.followers) + ' followers · ' + (l.country ? (COUNTRIES.find(([c]) => c === l.country.toUpperCase()) || [0, l.country])[1] : 'country unknown') + ' · found via ' + l.source),
     link ? h('p', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link)) : null,
     h('h3', {}, 'Partner stage'),
     h('p', { class: 'meta' }, 'Update this as your team reaches out. The app never contacts anyone itself.'),
@@ -154,7 +163,7 @@ function detail(l) {
     l.stageBy ? h('p', { class: 'meta' }, 'Last updated by ' + l.stageBy + (l.stageAt ? ' on ' + l.stageAt.slice(0, 10) : '')) : null,
     h('h3', {}, 'Details'),
     h('div', { class: 'field' }, h('label', { for: 'f-email' }, 'Public contact email (only one they publish themselves)'), email),
-    h('div', { class: 'field' }, h('label', { for: 'f-country' }, 'Country (2-letter code)'), country),
+    h('div', { class: 'field' }, h('label', { for: 'f-country' }, 'Country'), country),
     h('div', { class: 'field' }, h('label', { for: 'f-bio' }, 'About'), bio),
     h('div', { class: 'row' },
       h('button', { onclick: () => act(() => api('/leads/' + l.id, { method: 'PATCH', body: { contactEmail: email.value.trim() || null, country: country.value.trim() || null, bio: bio.value } }), 'Saved') }, 'Save details'),
@@ -165,8 +174,8 @@ function detail(l) {
 function findCard() {
   const box = h('div', { class: 'card' });
   const out = h('div', { class: 'meta', style: 'margin-top:8px' });
-  const country = h('input', { placeholder: 'Target country e.g. KE', maxlength: 2, size: 20 });
-  const language = h('input', { placeholder: 'Language e.g. Swahili', maxlength: 40 });
+  const country = h('select', { 'aria-label': 'Target country' }, h('option', { value: '' }, 'Any country'), COUNTRIES.map(([v, n]) => h('option', { value: v }, n)));
+  const language = h('select', { 'aria-label': 'Language' }, h('option', { value: '' }, 'Any language'), LANGUAGES.map(([v, n]) => h('option', { value: n }, n)));
   const focus = h('input', { placeholder: 'Extra focus (optional)', maxlength: 200, style: 'flex:1;min-width:220px' });
   const limit = h('select', { 'aria-label': 'How many' }, [10, 15, 25].map((n) => h('option', { value: n, selected: n === 15 }, 'Up to ' + n)));
   const go = h('button', { id: 'find-btn', style: 'font-size:18px;padding:14px 28px' }, 'Find partners');

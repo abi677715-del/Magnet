@@ -90,6 +90,16 @@ describe('partner stage', () => {
 });
 
 describe('leads', () => {
+  it('filters by country and by language (code or name)', async () => {
+    await importLeads(c, [row('ke1', { country: 'KE' }), row('ng1', { country: 'NG' }), row('none', { country: undefined })]);
+    await c.db.lead.updateMany({ where: { handle: 'ke1' }, data: { language: 'Swahili' } });
+    await c.db.lead.updateMany({ where: { handle: 'ng1' }, data: { language: 'en-GB' } });
+    expect((await c.api('/leads?country=ke')).json.items.map((l: any) => l.handle)).toEqual(['ke1']);
+    expect((await c.api('/leads?language=sw')).json.items.map((l: any) => l.handle)).toEqual(['ke1']); // matched by the language's name
+    expect((await c.api('/leads?language=en')).json.items.map((l: any) => l.handle)).toEqual(['ng1']); // matched by code prefix
+    expect((await c.api('/leads?country=KENYA')).json.total).toBe(3); // invalid values are ignored
+  });
+
   it('enriching validates input and ignores unknown fields', async () => {
     await importLeads(c, [{ platform: 'tiktok', handle: 'bare' }]);
     const l = await lead('bare');

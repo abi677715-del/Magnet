@@ -3,9 +3,15 @@ import { PartnerStage, Platform, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { AuditService } from '../common/audit.service';
 
+const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
+
 export interface LeadQuery {
   platform?: Platform;
   stage?: PartnerStage;
+  /** ISO 3166 alpha-2 country code. */
+  country?: string;
+  /** ISO 639-1 language code; matches the code itself or the language's English name. */
+  language?: string;
   q?: string;
   /** Only leads found at or after this time (used for "found today" / "last search"). */
   since?: Date;
@@ -24,11 +30,24 @@ export class LeadsService {
     return {
       ...(q.platform ? { platform: q.platform } : {}),
       ...(q.stage ? { stage: q.stage } : {}),
+      ...(q.country ? { country: { equals: q.country, mode: 'insensitive' as const } } : {}),
+      ...(q.language ? { AND: [{ OR: this.languageMatches(q.language) }] } : {}),
       ...(q.since ? { discoveredAt: { gte: q.since } } : {}),
       ...(q.q
         ? { OR: [{ displayName: { contains: q.q, mode: 'insensitive' } }, { handle: { contains: q.q, mode: 'insensitive' } }, { bio: { contains: q.q, mode: 'insensitive' } }] }
         : {}),
     };
+  }
+
+  private languageMatches(code: string): Prisma.LeadWhereInput[] {
+    let name = '';
+    try { name = languageNames.of(code) ?? ''; } catch { /* not a valid code: match the text as typed */ }
+    const insensitive = 'insensitive' as const;
+    return [
+      { language: { equals: code, mode: insensitive } },
+      { language: { startsWith: `${code}-`, mode: insensitive } },
+      ...(name && name !== code ? [{ language: { contains: name, mode: insensitive } }] : []),
+    ];
   }
 
   async list(q: LeadQuery) {
