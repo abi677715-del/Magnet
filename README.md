@@ -67,7 +67,7 @@ All in environment variables (see `.env.example`): `PRODUCT_DESCRIPTION` and `ID
 
 ## Costs
 
-The AI web search is billed per search plus tokens (see Anthropic's pricing page); `DISCOVERY_MODEL` can be set to a cheaper model.
+The AI web search is billed per search plus tokens (see Anthropic's pricing page); `DISCOVERY_MODEL` picks the model (default `claude-sonnet-5-5`). Web search must be enabled on your Anthropic account, and a trial account without credits will fail.
 
 ## Compliance — please read
 

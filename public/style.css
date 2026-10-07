@@ -38,3 +38,7 @@ ul.plain { margin:0; padding-left:18px; } pre { white-space:pre-wrap; background
 .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--text); color:var(--bg); padding:10px 16px; border-radius:10px; max-width:90vw; z-index:9; }
 .toast.err { background:var(--bad); color:#fff; }
 .banner { background:rgba(245,165,36,.15); border:1px solid var(--warn); color:var(--text); border-radius:8px; padding:8px 12px; margin:8px 0; font-size:13px; }
+
+.foot { position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:10px 16px; }
+.foot .stats { justify-content:center; }
+select.stage { min-width:120px; }
