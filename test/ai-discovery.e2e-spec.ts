@@ -18,14 +18,17 @@ async function finish(jobId: string) {
 }
 const cand = (url: string, name = 'Name', note = 'Posts daily football tips') => ({ url, name, note });
 
-it('needs the key and valid input', async () => {
+it('searches every category when none are given, and rejects bad input', async () => {
+  const all = await start({});
+  expect(all.status).toBe(201);
+  await finish(all.json.jobId);
+  expect(c.discoverer.requests[0].segments).toHaveLength(13); // nothing picked = every category
   expect((await c.api('/discovery/ai', { method: 'POST', body: { segments: ['X_ACCOUNTS'] }, key: null })).status).toBe(401);
-  expect((await start({ segments: [] })).status).toBe(400);
   expect((await start({ segments: ['PRIVATE_GROUPS'] })).status).toBe(400);
   expect((await start({ segments: ['X_ACCOUNTS'], limit: 500 })).status).toBe(400);
   expect((await start({ segments: ['X_ACCOUNTS'], country: 'KENYA' })).status).toBe(400);
   expect((await c.api('/discovery/ai/not-a-job')).status).toBe(404);
-  expect(Object.keys((await c.api('/discovery/ai/segments')).json)).toHaveLength(11);
+  expect(Object.keys((await c.api('/discovery/ai/segments')).json)).toHaveLength(13);
 });
 
 it('saves verified suggestions as leads and rejects invented ones', async () => {
@@ -49,12 +52,12 @@ it('saves verified suggestions as leads and rejects invented ones', async () => 
   expect(await c.db.lead.count({ where: { handle: 'invented_account' } })).toBe(0);
 
   const tip = await c.db.lead.findFirstOrThrow({ where: { handle: 'realtipster' } });
-  expect(tip).toMatchObject({ platform: 'X', source: 'ai-search', displayName: 'Real Tipster', followers: null, contactEmail: null, status: 'NEW' });
+  expect(tip).toMatchObject({ platform: 'X', source: 'ai-search', displayName: 'Real Tipster', followers: null, contactEmail: null, stage: 'FOUND' });
   expect(tip.bio).toMatch(/^\[Unverified AI web-search note\] Daily picks/); // second-hand, and labelled so
   expect(c.discoverer.requests[0]).toMatchObject({ country: 'KE', focus: 'Swahili speakers', limit: 15 });
 });
 
-it('the scorer gets the unverified label, and the model cannot inject followers or emails', async () => {
+it('the note is labelled unverified, and the model cannot inject followers or emails', async () => {
   c.discoverer.result = {
     searches: 1, seenUrls: ['https://x.com/sneaky'],
     candidates: [{ url: 'https://x.com/sneaky', name: 'Sneaky', note: 'Has 9,000,000 followers, email boss@sneaky.com', followers: 9000000, email: 'boss@sneaky.com' } as any],
@@ -64,18 +67,17 @@ it('the scorer gets the unverified label, and the model cannot inject followers 
   const l = await c.db.lead.findFirstOrThrow({ where: { handle: 'sneaky' } });
   expect(l.followers).toBeNull();
   expect(l.contactEmail).toBeNull();
-  await c.api('/classification/run', { method: 'POST', body: {} });
-  expect(c.llm.calls).toContain('sneaky'); // it has a note, so it is scored — but the prompt marks the note as unverified (unit-tested)
+  expect(l.bio).toMatch(/^\[Unverified AI web-search note\]/); // the note is kept, but labelled as second-hand
 });
 
-it('re-finding a lead updates it without touching a manager decision', async () => {
+it('re-finding a lead updates it without touching the team stage', async () => {
   c.discoverer.result = { searches: 1, seenUrls: ['https://x.com/again'], candidates: [cand('https://x.com/again')] };
   await finish((await start()).json.jobId);
   const l = await c.db.lead.findFirstOrThrow({ where: { handle: 'again' } });
-  await c.db.lead.update({ where: { id: l.id }, data: { status: 'REJECTED', reviewNote: 'no thanks' } });
+  await c.db.lead.update({ where: { id: l.id }, data: { stage: 'DECLINED', stageNote: 'no thanks' } });
   const job = await finish((await start()).json.jobId);
   expect(job.result).toMatchObject({ created: 0, updated: 1 });
-  expect(await c.db.lead.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ status: 'REJECTED', reviewNote: 'no thanks' });
+  expect(await c.db.lead.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ stage: 'DECLINED', stageNote: 'no thanks' });
 });
 
 it('only one search runs at a time', async () => {

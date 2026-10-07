@@ -1,31 +1,23 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { LeadStatus, Platform, Prisma } from '@prisma/client';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { PartnerStage, Platform, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { AuditService } from '../common/audit.service';
-import { HARD_FLAGS, OUTSIDE_TARGET_MARKETS } from '../classification/scoring';
+
+const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
 
 export interface LeadQuery {
-  status?: LeadStatus;
   platform?: Platform;
-  minScore?: number;
-  priority?: boolean;
-  needsAttention?: boolean;
+  stage?: PartnerStage;
+  /** ISO 3166 alpha-2 country code. */
+  country?: string;
+  /** ISO 639-1 language code; matches the code itself or the language's English name. */
+  language?: string;
   q?: string;
+  /** Only leads found at or after this time (used for "found today" / "last search"). */
+  since?: Date;
   limit?: number;
   offset?: number;
 }
-
-/**
- * Quotes a CSV cell. Text that starts with = + - @ would be run as a formula by Excel/Sheets, and these
- * values come from strangers' public profiles, so such cells are prefixed with an apostrophe.
- */
-export function csvCell(value: unknown): string {
-  let text = value == null ? '' : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-const BLOCKING = new Set<string>([...HARD_FLAGS, OUTSIDE_TARGET_MARKETS]);
 
 @Injectable()
 export class LeadsService {
@@ -36,15 +28,26 @@ export class LeadsService {
 
   private where(q: LeadQuery): Prisma.LeadWhereInput {
     return {
-      ...(q.status ? { status: q.status } : {}),
       ...(q.platform ? { platform: q.platform } : {}),
-      ...(q.minScore !== undefined ? { score: { gte: q.minScore } } : {}),
-      ...(q.priority ? { isPriority: true } : {}),
-      ...(q.needsAttention ? { scoreError: { not: null } } : {}),
+      ...(q.stage ? { stage: q.stage } : {}),
+      ...(q.country ? { country: { equals: q.country, mode: 'insensitive' as const } } : {}),
+      ...(q.language ? { AND: [{ OR: this.languageMatches(q.language) }] } : {}),
+      ...(q.since ? { discoveredAt: { gte: q.since } } : {}),
       ...(q.q
         ? { OR: [{ displayName: { contains: q.q, mode: 'insensitive' } }, { handle: { contains: q.q, mode: 'insensitive' } }, { bio: { contains: q.q, mode: 'insensitive' } }] }
         : {}),
     };
+  }
+
+  private languageMatches(code: string): Prisma.LeadWhereInput[] {
+    let name = '';
+    try { name = languageNames.of(code) ?? ''; } catch { /* not a valid code: match the text as typed */ }
+    const insensitive = 'insensitive' as const;
+    return [
+      { language: { equals: code, mode: insensitive } },
+      { language: { startsWith: `${code}-`, mode: insensitive } },
+      ...(name && name !== code ? [{ language: { contains: name, mode: insensitive } }] : []),
+    ];
   }
 
   async list(q: LeadQuery) {
@@ -53,16 +56,11 @@ export class LeadsService {
     const [items, total] = await Promise.all([
       this.prisma.lead.findMany({
         where,
-        orderBy: [{ score: { sort: 'desc', nulls: 'last' } }, { discoveredAt: 'desc' }],
+        orderBy: [{ discoveredAt: 'desc' }, { displayName: 'asc' }],
         take,
         skip: Math.max(q.offset ?? 0, 0),
         // The list doesn't need the long recent-content payload.
-        select: {
-          id: true, platform: true, handle: true, url: true, displayName: true, bio: true, followers: true,
-          country: true, language: true, contactEmail: true, source: true, discoveredAt: true, status: true,
-          score: true, category: true, summary: true, strengths: true, concerns: true, redFlags: true,
-          isPriority: true, scoredAt: true, scoreError: true, reviewedBy: true, reviewedAt: true, reviewNote: true,
-        },
+        select: { id: true, platform: true, handle: true, url: true, displayName: true, bio: true, followers: true, country: true, language: true, contactEmail: true, source: true, discoveredAt: true, stage: true, stageNote: true, stageBy: true, stageAt: true },
       }),
       this.prisma.lead.count({ where }),
     ]);
@@ -75,87 +73,42 @@ export class LeadsService {
     return lead;
   }
 
-  /** Everything matching the filter as CSV (up to 5,000 rows), best score first, for the team to work from outside the app. */
-  async exportCsv(q: LeadQuery): Promise<string> {
-    const leads = await this.prisma.lead.findMany({
-      where: this.where(q),
-      orderBy: [{ score: { sort: 'desc', nulls: 'last' } }, { discoveredAt: 'desc' }],
-      take: 5000,
-    });
-    const header = ['Name', 'Platform', 'Handle', 'Link', 'Followers', 'Country', 'Language', 'Category', 'Score', 'Priority', 'Status', 'Red flags', 'Summary', 'Strengths', 'Concerns', 'Public contact email', 'Decision by', 'Decision note', 'Found on'];
-    const rows = leads.map((l) => [
-      l.displayName, l.platform, l.handle, l.url, l.followers, l.country, l.language, l.category, l.score, l.isPriority ? 'yes' : '', l.status,
-      l.redFlags.join('; '), l.summary, l.strengths.join('; '), l.concerns.join('; '), l.contactEmail, l.reviewedBy, l.reviewNote, l.discoveredAt.toISOString().slice(0, 10),
-    ]);
-    return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
-  }
-
   async stats() {
-    const [byStatus, priority, needsAttention, avg] = await Promise.all([
-      this.prisma.lead.groupBy({ by: ['status'], _count: true }),
-      this.prisma.lead.count({ where: { isPriority: true, status: LeadStatus.SCORED } }),
-      this.prisma.lead.count({ where: { scoreError: { not: null }, status: LeadStatus.NEW } }),
-      this.prisma.lead.aggregate({ _avg: { score: true } }),
+    const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
+    const [total, last24h, byPlatform, byStage] = await Promise.all([
+      this.prisma.lead.count(),
+      this.prisma.lead.count({ where: { discoveredAt: { gte: dayAgo } } }),
+      this.prisma.lead.groupBy({ by: ['platform'], _count: true }),
+      this.prisma.lead.groupBy({ by: ['stage'], _count: true }),
     ]);
-    return {
-      byStatus: Object.fromEntries(byStatus.map((r) => [r.status, r._count])),
-      awaitingReviewPriority: priority,
-      needsAttention,
-      averageScore: avg._avg.score === null ? null : Math.round(avg._avg.score),
-    };
+    return { total, last24h, byPlatform: Object.fromEntries(byPlatform.map((r) => [r.platform, r._count])), byStage: Object.fromEntries(byStage.map((r) => [r.stage, r._count])) };
   }
 
-  /** Every status change is a single conditional UPDATE, so two managers clicking at once can't both "win". */
-  private async move(
-    actor: string,
-    id: string,
-    from: LeadStatus[],
-    to: LeadStatus,
-    note: string | undefined,
-    action: string,
-    extraWhere: Prisma.LeadWhereInput = {},
-  ) {
-    const claimed = await this.prisma.lead.updateMany({
-      where: { id, status: { in: from }, ...extraWhere },
-      data: { status: to, reviewedBy: actor, reviewedAt: new Date(), reviewNote: note ?? null },
-    });
-    if (claimed.count === 0) {
-      const lead = await this.prisma.lead.findUnique({ where: { id }, select: { status: true } });
-      if (!lead) throw new NotFoundException('Lead not found');
-      throw new BadRequestException(`This lead is ${lead.status} and can't be moved to ${to} from there.`);
-    }
-    await this.audit.log(actor, action, id, { note: note ?? null });
-    return this.get(id);
-  }
-
-  async approve(actor: string, id: string, note?: string) {
-    const lead = await this.get(id);
-    if (!lead.scoredAt) throw new BadRequestException('Score this lead before approving it.');
-    const blocking = lead.redFlags.filter((f) => BLOCKING.has(f));
-    if (blocking.length) {
-      // Compliance rule, not a preference: managers can't override it from the dashboard.
-      throw new BadRequestException(`Can't approve a lead with a disqualifying flag (${blocking.join(', ')}).`);
-    }
-    return this.move(actor, id, [LeadStatus.SCORED, LeadStatus.REJECTED], LeadStatus.APPROVED, note, 'LEAD_APPROVED');
-  }
-
-  reject(actor: string, id: string, note?: string) {
-    return this.move(actor, id, [LeadStatus.NEW, LeadStatus.SCORED, LeadStatus.APPROVED], LeadStatus.REJECTED, note, 'LEAD_REJECTED');
-  }
-
-  /** Lets a manager fill in what automation couldn't find (an email, a bio, a country). */
+  /** Lets a person fill in what automation couldn't find (an email, a bio, a country). */
   async enrich(actor: string, id: string, patch: { contactEmail?: string | null; country?: string | null; bio?: string; displayName?: string }) {
-    const lead = await this.get(id);
+    await this.get(id);
     const data: Prisma.LeadUpdateInput = {};
     if (patch.contactEmail !== undefined) data.contactEmail = patch.contactEmail ? patch.contactEmail.toLowerCase() : null;
     if (patch.country !== undefined) data.country = patch.country ? patch.country.toUpperCase() : null;
     if (patch.displayName) data.displayName = patch.displayName;
-    if (patch.bio !== undefined) {
-      data.bio = patch.bio;
-      if (lead.status === LeadStatus.NEW) data.scoreError = null; // new information: worth another try
-    }
+    if (patch.bio !== undefined) data.bio = patch.bio;
     await this.prisma.lead.update({ where: { id }, data });
     await this.audit.log(actor, 'LEAD_EDITED', id, { fields: Object.keys(patch) });
     return this.get(id);
+  }
+
+  /** Records where the team's own outreach stands. Nothing is sent from here. */
+  async setStage(actor: string, id: string, stage: PartnerStage, note?: string) {
+    await this.get(id);
+    await this.prisma.lead.update({ where: { id }, data: { stage, stageNote: note ?? null, stageBy: actor, stageAt: new Date() } });
+    await this.audit.log(actor, 'LEAD_STAGE', id, { stage, note: note ?? null });
+    return this.get(id);
+  }
+
+  async remove(actor: string, id: string) {
+    await this.get(id);
+    await this.prisma.lead.delete({ where: { id } });
+    await this.audit.log(actor, 'LEAD_DELETED', id);
+    return { deleted: true };
   }
 }

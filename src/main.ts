@@ -12,7 +12,7 @@ async function bootstrap() {
   // Behind Railway/Render's proxy: without this every visitor shares one IP and rate limits misfire.
   app.set('trust proxy', 1);
   app.use(helmet());
-  app.use(json({ limit: '3mb' })); // CSV imports are sent as JSON text
+  app.use(json({ limit: '100kb' }));
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   // The dashboard is plain files served from the same origin, so no CORS is needed.
   app.useStaticAssets(join(__dirname, '..', 'public'), { prefix: '/dashboard' });

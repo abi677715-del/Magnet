@@ -3,7 +3,6 @@ import { Platform } from '@prisma/client';
 import { YoutubeProvider } from './providers/youtube.provider';
 import { WebProvider } from './providers/web.provider';
 import { IngestService } from './ingest.service';
-import { leadsFromCsv, leadsFromRecords } from './csv';
 import { ParsedUrl, parseLeadUrl } from './url-parser';
 import { RawLead } from './types';
 
@@ -21,11 +20,6 @@ export class DiscoveryService {
     private web: WebProvider,
     private ingest: IngestService,
   ) {}
-
-  async searchYoutube(query: string, limit: number, opts: { regionCode?: string; language?: string }) {
-    const leads = await this.youtube.search(query, limit, opts);
-    return { found: leads.length, ...(await this.ingest.upsertMany(leads)) };
-  }
 
   /**
    * Reads a lead in the best way available for its platform. `enriched` is true
@@ -52,13 +46,13 @@ export class DiscoveryService {
       }
       try {
         const { raw, enriched } = await this.readLead(parsed, 'url');
-        // TikTok, Instagram, X, Reddit (and anything we couldn't read) can't be read automatically —
-        // save the link so nothing is lost, and the manager can add a bio or import details.
+        // TikTok, Instagram, Facebook, X, Reddit (and anything we couldn't read) can't be read automatically —
+        // save the link so nothing is lost; details can be added later.
         const note = enriched
           ? undefined
           : parsed.platform === Platform.WEBSITE || parsed.platform === Platform.TELEGRAM
             ? 'Could not read this page (blocked, private or not found) — saved as a bare link.'
-            : 'Saved as a link. This platform cannot be read automatically — add a bio or import details so it can be scored.';
+            : 'Saved as a link. This platform cannot be read automatically — add details by hand if you need them.';
         const saved = await this.ingest.upsert(raw);
         out.push({ url: input, status: 'saved', leadId: saved.id, note });
       } catch (err) {
@@ -66,14 +60,5 @@ export class DiscoveryService {
       }
     }
     return out;
-  }
-
-  async importFile(format: 'csv' | 'json', data: unknown) {
-    const parsed =
-      format === 'csv'
-        ? leadsFromCsv(String(data))
-        : leadsFromRecords(Array.isArray(data) ? (data as Record<string, unknown>[]) : [], 'json');
-    const saved = await this.ingest.upsertMany(parsed.leads);
-    return { created: saved.created, updated: saved.updated, errors: parsed.errors };
   }
 }
