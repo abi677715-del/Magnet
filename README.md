@@ -52,7 +52,6 @@ The search tool is billed per search on top of the normal token cost, so keep th
 Needs Node 20+ and PostgreSQL.
 
 ```bash
-cd affiliate-magnet
 npm install
 cp .env.example .env        # fill in DATABASE_URL, ADMIN_API_KEY, ANTHROPIC_API_KEY
 npx prisma migrate deploy
@@ -63,7 +62,7 @@ Open `/dashboard/`, sign in with your `ADMIN_API_KEY`, and add some leads.
 
 ## Deploy (Railway)
 
-1. New project → add a **PostgreSQL** database, then a service from this repo with root directory `affiliate-magnet` (it builds from the `Dockerfile`; migrations run on start).
+1. New project → add a **PostgreSQL** database, then a service from this repo. Leave the root directory empty: the `Dockerfile` is at the top of the repo and migrations run on start. (Without the Dockerfile, the `build` and `start` scripts do the same work.)
 2. Set the variables from `.env.example`. At minimum: `DATABASE_URL` (Railway fills this in), `ADMIN_API_KEY`, `ANTHROPIC_API_KEY`, `PUBLIC_BASE_URL`.
 3. Open `https://<your-app>/dashboard/`.
 
