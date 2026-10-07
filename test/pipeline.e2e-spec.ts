@@ -1,5 +1,4 @@
 process.env.ADMIN_API_KEY = 'e2e-admin-key-0123456789abcdef';
-process.env.UNSUBSCRIBE_SECRET = 'e2e-unsubscribe-secret-0123456789';
 process.env.ALLOWED_COUNTRIES = 'KE,NG,ET';
 process.env.PRIORITY_THRESHOLD = '70';
 import { boot, importLeads } from './helpers';
@@ -22,14 +21,17 @@ const lead = async (handle: string) => (await c.db.lead.findFirstOrThrow({ where
 
 describe('auth', () => {
   it('refuses missing and wrong keys on every protected route', async () => {
-    for (const [method, path] of [['GET', '/leads'], ['GET', '/leads/stats'], ['POST', '/discovery/import'], ['POST', '/classification/run'], ['POST', '/outreach/00000000-0000-0000-0000-000000000000/send']]) {
+    for (const [method, path] of [['GET', '/leads'], ['GET', '/leads/stats'], ['POST', '/discovery/import'], ['POST', '/classification/run'], ['GET', '/leads/export'], ['POST', '/discovery/ai']]) {
       expect((await c.api(path, { method, key: null })).status).toBe(401);
       expect((await c.api(path, { method, key: 'wrong-key-wrong-key-wrong' })).status).toBe(401);
     }
   });
-  it('keeps the health check and unsubscribe page public', async () => {
+  it('keeps only the health check public, and has no email-sending endpoints at all', async () => {
     expect((await c.api('/health', { key: null })).status).toBe(200);
-    expect((await c.api('/unsubscribe/not-a-token', { key: null })).status).toBe(200);
+    for (const path of ['/unsubscribe/x', '/outreach/x', '/leads/00000000-0000-4000-8000-000000000000/outreach/draft']) {
+      expect([404, 401]).toContain((await c.api(path, { key: null })).status);
+      expect((await c.api(path, { method: 'POST' })).status).toBe(404);
+    }
   });
   it('fails closed when the server key is too short', async () => {
     const saved = process.env.ADMIN_API_KEY;
@@ -198,5 +200,35 @@ describe('manager review', () => {
     const stats = (await c.api('/leads/stats')).json;
     expect(stats.byStatus.SCORED).toBe(3);
     expect(stats.averageScore).toBeGreaterThan(0);
+  });
+});
+
+describe('export', () => {
+  it('downloads the filtered leads as a spreadsheet, best score first', async () => {
+    await importLeads(c.api, [row('great'), row('weak', { followers: 300 }), row('kidstips')]);
+    c.llm.byHandle = { weak: { audience_relevance: 20, content_fit: 20, credibility: 30, promo_experience: 0 }, kidstips: { red_flags: ['AUDIENCE_INCLUDES_MINORS'] } };
+    await scoreAll();
+    const all = await c.api('/leads/export');
+    expect(all.status).toBe(200);
+    const lines = all.text.trim().split('\r\n');
+    expect(lines[0]).toMatch(/^Name,Platform,Handle,Link,Followers,Country/);
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toMatch(/^great,YOUTUBE,great/); // highest score first
+    expect(lines[3]).toMatch(/AUDIENCE_INCLUDES_MINORS/);
+    const priorityOnly = (await c.api('/leads/export?priority=true')).text.trim().split('\r\n');
+    expect(priorityOnly).toHaveLength(2);
+    expect((await c.api('/leads/export?q=weak')).text.trim().split('\r\n')).toHaveLength(2);
+    expect((await c.api('/leads/export?status=APPROVED')).text.trim().split('\r\n')).toHaveLength(1); // header only
+  });
+
+  it('cannot be used to attack whoever opens the spreadsheet (formula injection) and quotes awkward text', async () => {
+    await importLeads(c.api, [row('evil', { name: '=HYPERLINK("http://evil.example","click")', bio: '+cmd|calc, "quoted"\nnewline ' + bio })]);
+    await scoreAll();
+    c.llm.byHandle = {};
+    const text = (await c.api('/leads/export')).text;
+    expect(text).toContain(`"'=HYPERLINK(""http://evil.example"",""click"")"`); // prefixed with an apostrophe, quotes doubled
+    expect(text).not.toMatch(/(^|,)=HYPERLINK/m);
+    const cells = text.split('\r\n')[1];
+    expect(cells.startsWith('"\'=HYPERLINK')).toBe(true);
   });
 });

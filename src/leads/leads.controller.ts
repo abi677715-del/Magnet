@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { LeadStatus, Platform } from '@prisma/client';
 import { IsEmail, IsOptional, IsString, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
@@ -24,12 +24,11 @@ export class LeadsController {
     private classification: ClassificationService,
   ) {}
 
-  @Get('leads')
-  list(@Query() query: Record<string, string | undefined>) {
+  private parseQuery(query: Record<string, string | undefined>) {
     const int = (v?: string) => (v !== undefined && /^\d{1,9}$/.test(v) ? Number(v) : undefined);
     const bool = (v?: string) => (v === 'true' ? true : undefined);
     const { status, platform } = query;
-    return this.leads.list({
+    return {
       status: status && (Object.values(LeadStatus) as string[]).includes(status) ? (status as LeadStatus) : undefined,
       platform: platform && (Object.values(Platform) as string[]).includes(platform) ? (platform as Platform) : undefined,
       minScore: int(query.minScore),
@@ -38,7 +37,20 @@ export class LeadsController {
       q: query.q?.slice(0, 100),
       limit: int(query.limit),
       offset: int(query.offset),
-    });
+    };
+  }
+
+  @Get('leads')
+  list(@Query() query: Record<string, string | undefined>) {
+    return this.leads.list(this.parseQuery(query));
+  }
+
+  /** Same filters as the list; downloads a spreadsheet. */
+  @Get('leads/export')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="partner-leads.csv"')
+  export(@Query() query: Record<string, string | undefined>) {
+    return this.leads.exportCsv(this.parseQuery(query));
   }
 
   @Get('leads/stats')
@@ -64,16 +76,6 @@ export class LeadsController {
   @Post('leads/:id/reject')
   reject(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NoteDto) {
     return this.leads.reject(req.actor, id, dto.note);
-  }
-
-  @Post('leads/:id/replied')
-  replied(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NoteDto) {
-    return this.leads.markReplied(req.actor, id, dto.note);
-  }
-
-  @Post('leads/:id/do-not-contact')
-  doNotContact(@Req() req: any, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NoteDto) {
-    return this.leads.doNotContact(req.actor, id, dto.note);
   }
 
   // Scoring spends money on every call, so it's rate-limited harder than the rest.

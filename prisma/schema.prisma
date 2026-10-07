@@ -18,20 +18,10 @@ enum Platform {
 }
 
 enum LeadStatus {
-  NEW             // discovered, not scored yet
-  SCORED          // scored by the AI, waiting for a manager
-  APPROVED        // manager approved for outreach
-  REJECTED        // manager rejected
-  CONTACTED       // an outreach email was sent
-  REPLIED         // they answered (set by the manager)
-  DO_NOT_CONTACT  // opted out or flagged — never message again
-}
-
-enum OutreachStatus {
-  DRAFT      // written by the AI, not yet approved
-  APPROVED   // the manager approved this exact text
-  SENT
-  FAILED
+  NEW       // discovered, not scored yet
+  SCORED    // scored by the AI, waiting for a manager
+  APPROVED  // on the manager's shortlist
+  REJECTED  // manager said no
 }
 
 model Lead {
@@ -66,39 +56,9 @@ model Lead {
   reviewedAt    DateTime?
   reviewNote    String?
 
-  outreach      Outreach[]
-
   @@unique([platform, handle])
   @@index([status, score])
   @@map("leads")
-}
-
-model Outreach {
-  id         String         @id @default(uuid())
-  leadId     String
-  lead       Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  toEmail    String
-  subject    String
-  body       String
-  status     OutreachStatus @default(DRAFT)
-  createdAt  DateTime       @default(now())
-  approvedBy String?
-  approvedAt DateTime?
-  sentAt     DateTime?
-  providerId String?
-  error      String?
-
-  @@index([leadId])
-  @@map("outreach")
-}
-
-// Anyone here is never emailed again, whatever a manager clicks.
-model Suppression {
-  email     String   @id
-  reason    String
-  createdAt DateTime @default(now())
-
-  @@map("suppressions")
 }
 
 model AuditLog {

@@ -15,6 +15,16 @@ export interface LeadQuery {
   offset?: number;
 }
 
+/**
+ * Quotes a CSV cell. Text that starts with = + - @ would be run as a formula by Excel/Sheets, and these
+ * values come from strangers' public profiles, so such cells are prefixed with an apostrophe.
+ */
+export function csvCell(value: unknown): string {
+  let text = value == null ? '' : String(value);
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
 const BLOCKING = new Set<string>([...HARD_FLAGS, OUTSIDE_TARGET_MARKETS]);
 
 @Injectable()
@@ -24,8 +34,8 @@ export class LeadsService {
     private audit: AuditService,
   ) {}
 
-  async list(q: LeadQuery) {
-    const where: Prisma.LeadWhereInput = {
+  private where(q: LeadQuery): Prisma.LeadWhereInput {
+    return {
       ...(q.status ? { status: q.status } : {}),
       ...(q.platform ? { platform: q.platform } : {}),
       ...(q.minScore !== undefined ? { score: { gte: q.minScore } } : {}),
@@ -35,6 +45,10 @@ export class LeadsService {
         ? { OR: [{ displayName: { contains: q.q, mode: 'insensitive' } }, { handle: { contains: q.q, mode: 'insensitive' } }, { bio: { contains: q.q, mode: 'insensitive' } }] }
         : {}),
     };
+  }
+
+  async list(q: LeadQuery) {
+    const where = this.where(q);
     const take = Math.min(Math.max(q.limit ?? 25, 1), 100);
     const [items, total] = await Promise.all([
       this.prisma.lead.findMany({
@@ -56,12 +70,24 @@ export class LeadsService {
   }
 
   async get(id: string) {
-    const lead = await this.prisma.lead.findUnique({
-      where: { id },
-      include: { outreach: { orderBy: { createdAt: 'desc' } } },
-    });
+    const lead = await this.prisma.lead.findUnique({ where: { id } });
     if (!lead) throw new NotFoundException('Lead not found');
     return lead;
+  }
+
+  /** Everything matching the filter as CSV (up to 5,000 rows), best score first, for the team to work from outside the app. */
+  async exportCsv(q: LeadQuery): Promise<string> {
+    const leads = await this.prisma.lead.findMany({
+      where: this.where(q),
+      orderBy: [{ score: { sort: 'desc', nulls: 'last' } }, { discoveredAt: 'desc' }],
+      take: 5000,
+    });
+    const header = ['Name', 'Platform', 'Handle', 'Link', 'Followers', 'Country', 'Language', 'Category', 'Score', 'Priority', 'Status', 'Red flags', 'Summary', 'Strengths', 'Concerns', 'Public contact email', 'Decision by', 'Decision note', 'Found on'];
+    const rows = leads.map((l) => [
+      l.displayName, l.platform, l.handle, l.url, l.followers, l.country, l.language, l.category, l.score, l.isPriority ? 'yes' : '', l.status,
+      l.redFlags.join('; '), l.summary, l.strengths.join('; '), l.concerns.join('; '), l.contactEmail, l.reviewedBy, l.reviewNote, l.discoveredAt.toISOString().slice(0, 10),
+    ]);
+    return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
   }
 
   async stats() {
@@ -115,27 +141,6 @@ export class LeadsService {
 
   reject(actor: string, id: string, note?: string) {
     return this.move(actor, id, [LeadStatus.NEW, LeadStatus.SCORED, LeadStatus.APPROVED], LeadStatus.REJECTED, note, 'LEAD_REJECTED');
-  }
-
-  markReplied(actor: string, id: string, note?: string) {
-    return this.move(actor, id, [LeadStatus.CONTACTED], LeadStatus.REPLIED, note, 'LEAD_REPLIED');
-  }
-
-  /** Permanent: the lead can never be approved or emailed again, and their address is suppressed. */
-  async doNotContact(actor: string, id: string, note?: string) {
-    const lead = await this.get(id);
-    if (lead.contactEmail) {
-      await this.prisma.suppression.upsert({
-        where: { email: lead.contactEmail.toLowerCase() },
-        create: { email: lead.contactEmail.toLowerCase(), reason: `Marked do-not-contact by ${actor}` },
-        update: {},
-      });
-    }
-    await this.prisma.outreach.updateMany({
-      where: { leadId: id, status: { in: ['DRAFT', 'APPROVED'] } },
-      data: { status: 'FAILED', error: 'Lead marked do-not-contact' },
-    });
-    return this.move(actor, id, Object.values(LeadStatus), LeadStatus.DO_NOT_CONTACT, note, 'LEAD_DO_NOT_CONTACT');
   }
 
   /** Lets a manager fill in what automation couldn't find (an email, a bio, a country). */

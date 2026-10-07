@@ -48,12 +48,11 @@ async function api(path, { method = 'GET', body } = {}) {
 const TABS = [
   { id: 'review', label: 'To review', query: { status: 'SCORED', priority: 'true' } },
   { id: 'all', label: 'All leads', query: {}, filters: true },
-  { id: 'approved', label: 'Approved', query: { status: 'APPROVED' } },
-  { id: 'contacted', label: 'Contacted', query: { status: 'CONTACTED' } },
+  { id: 'approved', label: 'Shortlist', query: { status: 'APPROVED' } },
   { id: 'attention', label: 'Needs attention', query: { needsAttention: 'true' } },
   { id: 'add', label: 'Add leads' },
 ];
-const STATUSES = ['NEW', 'SCORED', 'APPROVED', 'REJECTED', 'CONTACTED', 'REPLIED', 'DO_NOT_CONTACT'];
+const STATUSES = ['NEW', 'SCORED', 'APPROVED', 'REJECTED'];
 const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'REDDIT', 'TELEGRAM', 'WEBSITE'];
 const FLAG_TEXT = {
   AUDIENCE_INCLUDES_MINORS: 'Audience may include under-18s', FIXED_MATCH_SCAM: 'Sells "fixed matches" / sure tips', ILLEGAL_OR_HATEFUL: 'Illegal or hateful content',
@@ -91,8 +90,7 @@ async function loadStats() {
     $('stats').replaceChildren(
       h('span', {}, h('b', {}, s.awaitingReviewPriority), ' priority leads waiting'),
       h('span', {}, h('b', {}, by.SCORED || 0), ' scored'), h('span', {}, h('b', {}, by.NEW || 0), ' unscored'),
-      h('span', {}, h('b', {}, by.APPROVED || 0), ' approved'), h('span', {}, h('b', {}, by.CONTACTED || 0), ' contacted'),
-      h('span', {}, h('b', {}, by.REPLIED || 0), ' replied'),
+      h('span', {}, h('b', {}, by.APPROVED || 0), ' on shortlist'), h('span', {}, h('b', {}, by.REJECTED || 0), ' rejected'),
       s.needsAttention ? h('span', { class: 'pill warn' }, s.needsAttention + ' need attention') : null,
     );
   } catch { /* stats are a nicety */ }
@@ -115,6 +113,7 @@ async function renderTab() {
     const parts = [];
     if (tab.filters) parts.push(filterBar());
     if (tab.id === 'review') parts.push(h('div', { class: 'row' }, h('button', { onclick: runScoring }, 'Score new leads')));
+    if (['all', 'approved', 'review'].includes(tab.id)) parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => exportCsv(q) }, 'Export to CSV (' + total + ')')));
     if (!items.length) parts.push(h('p', { class: 'muted' }, tab.id === 'review' ? 'Nothing waiting. Add leads, then press "Score new leads".' : 'No leads here.'));
     parts.push(...items.map(leadCard));
     parts.push(h('div', { class: 'row' },
@@ -123,6 +122,18 @@ async function renderTab() {
       h('button', { class: 'ghost', disabled: state.offset + 25 >= total, onclick: () => { state.offset += 25; renderTab(); } }, 'Next')));
     pane.replaceChildren(...parts);
   } catch (err) { pane.replaceChildren(h('p', { class: 'error' }, err.message)); }
+}
+
+async function exportCsv(q) {
+  try {
+    const params = new URLSearchParams(q); params.delete('limit'); params.delete('offset');
+    const res = await fetch('/leads/export?' + params, { headers: { Authorization: 'Bearer ' + store.get('key') } });
+    if (!res.ok) throw new Error('Export failed (' + res.status + ')');
+    const url = URL.createObjectURL(await res.blob());
+    const a = h('a', { href: url, download: 'partner-leads.csv' }); document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Downloaded partner-leads.csv');
+  } catch (e) { toast(e.message, true); }
 }
 
 function filterBar() {
@@ -179,7 +190,6 @@ function detail(l) {
   const bio = h('textarea', { id: 'f-bio' }); bio.value = l.bio || '';
   const canDecide = ['NEW', 'SCORED', 'APPROVED', 'REJECTED'].includes(l.status);
   const blocked = (l.redFlags || []).some((f) => HARD.has(f));
-  const final = ['DO_NOT_CONTACT'].includes(l.status);
 
   return h('div', { class: 'card' },
     h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: closeDetail }, 'Close')),
@@ -199,62 +209,23 @@ function detail(l) {
 
     h('h3', {}, 'Decision'),
     h('div', { class: 'row' },
-      canDecide && l.status !== 'APPROVED' ? h('button', { class: 'good', disabled: !l.scoredAt || blocked, onclick: () => act(() => api('/leads/' + l.id + '/approve', { method: 'POST', body: { note: noteVal() } }), 'Approved') }, 'Approve') : null,
-      canDecide && l.status !== 'REJECTED' ? h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id + '/reject', { method: 'POST', body: { note: noteVal() } }), 'Rejected') }, 'Reject') : null,
-      l.status === 'CONTACTED' ? h('button', { onclick: () => act(() => api('/leads/' + l.id + '/replied', { method: 'POST', body: {} }), 'Marked as replied') }, 'They replied') : null,
-      !final ? h('button', { class: 'bad', onclick: () => { if (confirm('Mark as do-not-contact? This is permanent and blocks their email.')) act(() => api('/leads/' + l.id + '/do-not-contact', { method: 'POST', body: { note: noteVal() } }), 'Marked do-not-contact'); } }, 'Do not contact') : null,
-      !final ? h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id + '/rescore', { method: 'POST' }), 'Re-scored') }, 'Re-score') : null),
-    h('div', { class: 'field' }, h('label', { for: 'f-note' }, 'Note (optional)'), h('input', { id: 'f-note', maxlength: 400, placeholder: 'Why?' })),
+      canDecide && l.status !== 'APPROVED' ? h('button', { class: 'good', disabled: !l.scoredAt || blocked, onclick: () => act(() => api('/leads/' + l.id + '/approve', { method: 'POST', body: { note: noteVal() } }), 'Added to shortlist') }, 'Add to shortlist') : null,
+      canDecide && l.status !== 'REJECTED' ? h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id + '/reject', { method: 'POST', body: { note: noteVal() } }), 'Marked as not a fit') }, 'Not a fit') : null,
+      h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id + '/rescore', { method: 'POST' }), 'Re-scored') }, 'Re-score')),
+    h('div', { class: 'field' }, h('label', { for: 'f-note' }, 'Note (optional)'), h('input', { id: 'f-note', maxlength: 400, placeholder: 'Why? (optional)' })),
 
     h('h3', {}, 'Contact details'),
-    h('div', { class: 'field' }, h('label', { for: 'f-email' }, 'Email (only use one they publish themselves)'), email),
+    h('div', { class: 'field' }, h('label', { for: 'f-email' }, 'Public contact email (only one they publish themselves)'), email),
     h('div', { class: 'field' }, h('label', { for: 'f-country' }, 'Country (2-letter code)'), country),
     h('div', { class: 'field' }, h('label', { for: 'f-bio' }, 'Bio / description'), bio),
-    h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id, { method: 'PATCH', body: { contactEmail: email.value.trim() || null, country: country.value.trim() || null, bio: bio.value } }), 'Saved') }, 'Save details')),
-
-    l.status === 'APPROVED' || l.outreach.length ? outreachSection(l) : null);
+    h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id, { method: 'PATCH', body: { contactEmail: email.value.trim() || null, country: country.value.trim() || null, bio: bio.value } }), 'Saved') }, 'Save details')));
 }
 const noteVal = () => ($('f-note') ? $('f-note').value.trim() || undefined : undefined);
-
-function outreachSection(l) {
-  const open = l.outreach.find((o) => o.status === 'DRAFT' || o.status === 'APPROVED');
-  return h('div', {}, h('h3', {}, 'Outreach'),
-    l.status === 'APPROVED' && !open ? h('div', { class: 'row' }, h('button', { disabled: !l.contactEmail, onclick: () => act(() => api('/leads/' + l.id + '/outreach/draft', { method: 'POST' }), 'Draft written — review it below'), title: l.contactEmail ? '' : 'Add an email first' }, 'Write draft with AI'), l.contactEmail ? null : h('span', { class: 'muted' }, 'Add a contact email first.')) : null,
-    open ? draftEditor(open) : null,
-    l.outreach.filter((o) => o !== open).map((o) => h('p', { class: 'meta' }, o.status + ' · ' + new Date(o.createdAt).toLocaleDateString() + ' · ' + o.subject + (o.error ? ' — ' + o.error : ''))));
-}
-
-function draftEditor(o) {
-  const subject = h('input', { value: o.subject, maxlength: 150, style: 'width:100%' });
-  const body = h('textarea', {}); body.value = o.body;
-  const edited = () => subject.value !== o.subject || body.value !== o.body;
-  return h('div', {},
-    o.status === 'APPROVED' ? h('div', { class: 'banner' }, 'Approved. Editing it will cancel the approval.') : null,
-    h('div', { class: 'field' }, h('label', {}, 'Subject'), subject), h('div', { class: 'field' }, h('label', {}, 'Message (the unsubscribe link, address and 18+ notice are added automatically)'), body),
-    ...(o.warnings || []).map((w) => h('div', { class: 'banner' }, '⚠ ' + w)),
-    h('div', { class: 'row' },
-      h('button', { class: 'ghost', onclick: () => act(() => api('/outreach/' + o.id, { method: 'PATCH', body: { subject: subject.value, body: body.value } }), 'Draft saved') }, 'Save draft'),
-      o.status === 'DRAFT' ? h('button', { class: 'good', onclick: async () => { if (edited()) { try { await api('/outreach/' + o.id, { method: 'PATCH', body: { subject: subject.value, body: body.value } }); } catch (e) { return toast(e.message, true); } } act(() => api('/outreach/' + o.id + '/approve', { method: 'POST' }), 'Message approved'); } }, 'Approve this exact message') : null,
-      o.status === 'APPROVED' ? h('button', { onclick: sendIt(o) }, 'Send') : null),
-    h('details', {}, h('summary', {}, 'Preview exactly what they will receive'), h('pre', {}, 'To: ' + o.toEmail + '\nSubject: ' + o.subject + '\n\n' + o.fullText)));
-}
-
-function sendIt(o) {
-  return async () => {
-    if (!confirm('Send this email to ' + o.toEmail + '? This cannot be undone.')) return;
-    try {
-      const r = await api('/outreach/' + o.id + '/send', { method: 'POST' });
-      if (r.dryRun) { alert('DRY RUN — nothing was sent.\n\n' + r.note + '\n\nTo: ' + r.to + '\nSubject: ' + r.subject + '\n\n' + r.text); }
-      else toast('Sent to ' + r.to);
-      loadStats(); renderTab(); openLead(state.selected);
-    } catch (e) { toast(e.message, true); }
-  };
-}
 
 const AI_DEFAULTS = ['FOOTBALL_CHANNELS', 'PREDICTION_CREATORS', 'TELEGRAM_CHANNELS', 'YOUTUBE_CHANNELS'];
 function aiCard() {
   const box = h('div', { class: 'card' }, h('h2', {}, 'Find partners with AI'),
-    h('p', { class: 'muted' }, 'Claude searches the public web for candidates in the categories you pick. Public pages only. Every result is checked against the real search results before it is saved, and nothing is contacted.'));
+    h('p', { class: 'muted' }, 'Claude searches the public web for candidates in the categories you pick. Public pages only. Every result is checked against the real search results before it is saved.'));
   const out = h('div', { class: 'meta', style: 'margin-top:8px' });
   const checks = [];
   const country = h('input', { placeholder: 'Target country e.g. KE', maxlength: 2, size: 20 });
@@ -288,7 +259,7 @@ function aiCard() {
         if (job.status === 'failed') throw new Error(job.error || 'The search failed.');
         const r = job.result;
         out.replaceChildren(h('div', {}, 'Done: ' + r.created + ' new leads, ' + r.updated + ' already known. ' + r.verifiedFromSource + ' checked directly at the source. ' + r.rejected.length + ' suggestions rejected.'),
-          h('div', {}, 'Open "To review" after pressing "Score new leads" to see how they rate.'),
+          h('div', {}, 'Open "To review" and press "Score new leads" to see how they rate.'),
           r.rejected.length ? h('details', {}, h('summary', {}, 'Why were some rejected?'), h('ul', { class: 'plain' }, r.rejected.map((x) => h('li', {}, x.url + ' — ' + x.reason)))) : null);
         loadStats(); break;
       }

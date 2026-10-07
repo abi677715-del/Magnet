@@ -42,14 +42,5 @@ export const config = {
   discoveryModel: process.env.DISCOVERY_MODEL ?? 'claude-opus-5-5',
   aiDiscoveryDailyLimit: num('AI_DISCOVERY_DAILY_LIMIT', 20),
   aiDiscoveryMaxSearches: num('AI_DISCOVERY_MAX_SEARCHES', 10),
-  draftModel: process.env.DRAFT_MODEL ?? 'claude-opus-5-5',
   classifierConcurrency: num('CLASSIFIER_CONCURRENCY', 3),
-
-  // Outreach safety. DRY_RUN defaults to true: nothing is emailed until you turn it off on purpose.
-  outreachDryRun: (process.env.OUTREACH_DRY_RUN ?? 'true') !== 'false',
-  outreachDailyLimit: num('OUTREACH_DAILY_LIMIT', 25),
-  outreachFrom: process.env.OUTREACH_FROM ?? '',
-  senderName: process.env.SENDER_NAME ?? 'Affiliate team',
-  senderCompanyAddress: process.env.SENDER_COMPANY_ADDRESS ?? '', // required by anti-spam laws
-  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? 'http://localhost:4100').replace(/\/$/, ''),
 };

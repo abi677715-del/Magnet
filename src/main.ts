@@ -6,7 +6,6 @@ import helmet from 'helmet';
 import { json } from 'express';
 import { join } from 'path';
 import { AppModule } from './app.module';
-import { config } from './common/config';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -21,7 +20,6 @@ async function bootstrap() {
   if ((process.env.ADMIN_API_KEY ?? '').length < 16) {
     console.warn('WARNING: ADMIN_API_KEY is missing or shorter than 16 characters — every API call will be refused.');
   }
-  if (!config.outreachDryRun) console.warn('NOTICE: OUTREACH_DRY_RUN=false — approved messages will really be emailed.');
 
   const port = process.env.PORT ?? 4100;
   await app.listen(port);
