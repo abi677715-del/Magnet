@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  YOUTUBE
+  X
+  TIKTOK
+  INSTAGRAM
+  REDDIT
+  TELEGRAM
+  WEBSITE
+}
+
+enum LeadStatus {
+  NEW             // discovered, not scored yet
+  SCORED          // scored by the AI, waiting for a manager
+  APPROVED        // manager approved for outreach
+  REJECTED        // manager rejected
+  CONTACTED       // an outreach email was sent
+  REPLIED         // they answered (set by the manager)
+  DO_NOT_CONTACT  // opted out or flagged — never message again
+}
+
+enum OutreachStatus {
+  DRAFT      // written by the AI, not yet approved
+  APPROVED   // the manager approved this exact text
+  SENT
+  FAILED
+}
+
+model Lead {
+  id            String     @id @default(uuid())
+  platform      Platform
+  handle        String // normalised, lower-case channel / username / domain
+  url           String
+  displayName   String
+  bio           String     @default("")
+  followers     Int?
+  country       String? // ISO-3166 alpha-2 when known
+  language      String?
+  contactEmail  String?
+  recentContent Json       @default("[]") // [{ title, text, url, publishedAt }]
+  source        String // youtube-search | url | csv | manual
+  discoveredAt  DateTime   @default(now())
+
+  status        LeadStatus @default(NEW)
+  score         Int?
+  category      String?
+  summary       String?
+  breakdown     Json? // sub-scores + weights actually used
+  strengths     String[]   @default([])
+  concerns      String[]   @default([])
+  redFlags      String[]   @default([])
+  isPriority    Boolean    @default(false)
+  scoredAt      DateTime?
+  scoreModel    String?
+  scoreError    String?
+
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  reviewNote    String?
+
+  outreach      Outreach[]
+
+  @@unique([platform, handle])
+  @@index([status, score])
+  @@map("leads")
+}
+
+model Outreach {
+  id         String         @id @default(uuid())
+  leadId     String
+  lead       Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  toEmail    String
+  subject    String
+  body       String
+  status     OutreachStatus @default(DRAFT)
+  createdAt  DateTime       @default(now())
+  approvedBy String?
+  approvedAt DateTime?
+  sentAt     DateTime?
+  providerId String?
+  error      String?
+
+  @@index([leadId])
+  @@map("outreach")
+}
+
+// Anyone here is never emailed again, whatever a manager clicks.
+model Suppression {
+  email     String   @id
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@map("suppressions")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actor     String
+  action    String
+  leadId    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@map("audit_log")
+}

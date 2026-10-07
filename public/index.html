@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Affiliate Magnet</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Affiliate Magnet</h1>
+    <div id="stats" class="stats"></div>
+    <div class="who">
+      <input id="actor" placeholder="Your name" maxlength="40" aria-label="Your name">
+      <button id="logout" class="ghost" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main id="login" class="card narrow" hidden>
+    <h2>Sign in</h2>
+    <p class="muted">Enter the team access key (the <code>ADMIN_API_KEY</code> set on the server).</p>
+    <form id="login-form">
+      <input id="key" type="password" autocomplete="current-password" placeholder="Access key" aria-label="Access key" required>
+      <button type="submit">Sign in</button>
+    </form>
+    <p id="login-error" class="error"></p>
+  </main>
+
+  <div id="app" hidden>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="layout">
+      <section id="list-pane" class="list-pane"></section>
+      <aside id="detail-pane" class="detail-pane" hidden></aside>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>
