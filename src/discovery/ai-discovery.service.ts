@@ -60,7 +60,7 @@ export class AiDiscoveryService {
     if (today >= config.aiDiscoveryDailyLimit) {
       throw new BadRequestException(`Daily AI search limit reached (${config.aiDiscoveryDailyLimit}). Try again tomorrow.`);
     }
-    await this.audit.log(actor, 'DISCOVERY_AI', undefined, { segments: req.segments, country: req.country ?? null });
+    await this.audit.log(actor, 'DISCOVERY_AI', undefined, { segments: req.segments, country: req.country ?? null, topics: req.topics ?? [] });
 
     const job: AiJob = { id: randomUUID(), status: 'running', startedAt: new Date().toISOString() };
     this.jobs.set(job.id, job);
@@ -108,6 +108,7 @@ export class AiDiscoveryService {
           // (a value read from the source wins).
           raw.country = raw.country ?? req.country ?? null;
           raw.language = raw.language ?? req.language ?? null;
+          raw.topics = req.topics ?? [];
           const r = await this.ingest.upsert(raw);
           r.created ? created++ : updated++;
         } catch (err) {

@@ -128,3 +128,29 @@ it('Telegram + France + French: searches only Telegram, drops other platforms, a
 it('rejects an unknown platform', async () => {
   expect((await start({ platform: 'MYSPACE' })).status).toBe(400);
 });
+
+it('topics: tells the AI, tags the leads, and unions tags when found again for another topic', async () => {
+  c.discoverer.result = { searches: 1, seenUrls: ['https://t.me/s/mmafr'], candidates: [cand('https://t.me/mmafr', 'MMA FR')] };
+  const r = await start({ platform: 'TELEGRAM', topics: ['MMA', 'TENNIS'] });
+  expect(r.status).toBe(201);
+  await finish(r.json.jobId);
+  expect(c.discoverer.requests[0].topics).toEqual(['MMA', 'TENNIS']);
+  expect((await c.db.lead.findFirstOrThrow({ where: { handle: 'mmafr' } })).topics).toEqual(['MMA', 'TENNIS']);
+  const again = await start({ platform: 'TELEGRAM', topics: ['BASKETBALL', 'MMA'] });
+  await finish(again.json.jobId);
+  expect((await c.db.lead.findFirstOrThrow({ where: { handle: 'mmafr' } })).topics.sort()).toEqual(['BASKETBALL', 'MMA', 'TENNIS']);
+  expect((await c.api('/leads?topic=BASKETBALL')).json.items.map((l: any) => l.handle)).toEqual(['mmafr']);
+  expect((await c.api('/leads?topic=FOOTBALL')).json.total).toBe(0);
+  expect((await c.api('/leads?topic=constructor')).json.total).toBe(1); // not a topic: ignored, so no filter
+  expect((await c.api('/leads')).json.items[0].topics.sort()).toEqual(['BASKETBALL', 'MMA', 'TENNIS']);
+});
+
+it('topics: none or all nine means no restriction and no tags; unknown topics are refused', async () => {
+  c.discoverer.result = { searches: 1, seenUrls: ['https://t.me/s/anyone'], candidates: [cand('https://t.me/anyone', 'Anyone')] };
+  const all = await start({ platform: 'TELEGRAM', topics: ['FOOTBALL', 'SPORTS', 'PREDICTIONS', 'BETTING', 'TIPSTERS', 'SPORTS_NEWS', 'MMA', 'BASKETBALL', 'TENNIS'] });
+  await finish(all.json.jobId);
+  expect(c.discoverer.requests[0].topics).toEqual([]);
+  expect((await c.db.lead.findFirstOrThrow({ where: { handle: 'anyone' } })).topics).toEqual([]);
+  expect((await start({ topics: ['CHESS'] })).status).toBe(400);
+  expect(Object.keys((await c.api('/discovery/ai/topics')).json)).toHaveLength(9);
+});

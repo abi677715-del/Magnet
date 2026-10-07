@@ -3,6 +3,7 @@ import { PartnerStage, Platform } from '@prisma/client';
 import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { AuthGuard } from '../common/auth.guard';
 import { LeadsService } from './leads.service';
+import { TopicKey, TOPIC_KEYS } from '../discovery/topics';
 
 class EnrichDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsEmail() contactEmail?: string | null;
@@ -32,6 +33,7 @@ export class LeadsController {
       since: sinceDate && !Number.isNaN(sinceDate.getTime()) ? sinceDate : undefined,
       country: code(query.country, /^[A-Za-z]{2}$/)?.toUpperCase(),
       language: code(query.language, /^[A-Za-z]{2,3}$/)?.toLowerCase(),
+      topic: query.topic && TOPIC_KEYS.includes(query.topic as TopicKey) ? (query.topic as TopicKey) : undefined,
       q: query.q?.slice(0, 100),
       limit: int(query.limit),
       offset: int(query.offset),

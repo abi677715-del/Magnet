@@ -56,6 +56,8 @@ const LANGUAGES = names('language', LANGUAGE_CODES);
 const ROW_STAGES = [['FOUND', 'Status'], ['CONTACTED', 'Contacted'], ['IN_PROGRESS', 'In progress'], ['REGISTERED', 'Registered']];
 const STAGE_LABEL = Object.fromEntries(STAGES);
 const STAGE_CLASS = { FOUND: '', CONTACTED: 'warn', IN_PROGRESS: 'warn', REGISTERED: 'good', DECLINED: 'bad' };
+const TOPICS = [['FOOTBALL', 'Football'], ['SPORTS', 'Sports'], ['PREDICTIONS', 'Predictions'], ['BETTING', 'Betting'], ['TIPSTERS', 'Tipsters'], ['SPORTS_NEWS', 'Sports News'], ['MMA', 'MMA'], ['BASKETBALL', 'Basketball'], ['TENNIS', 'Tennis']];
+const TOPIC_LABEL = Object.fromEntries(TOPICS);
 const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'FACEBOOK', 'REDDIT', 'TELEGRAM', 'WEBSITE'];
 
 // Built once so a running search keeps showing its progress when the list below refreshes.
@@ -216,7 +218,7 @@ function filterBar() {
   const search = h('input', { type: 'search', placeholder: 'Search name, handle, bio', value: state.filters.q || '', onchange: (e) => { if (e.target.value.trim()) state.filters.q = e.target.value.trim(); else delete state.filters.q; state.offset = 0; renderTab(); } });
   const pick = (key, label, options) => h('select', { 'aria-label': label, onchange: (e) => { if (e.target.value) state.filters[key] = e.target.value; else delete state.filters[key]; state.offset = 0; renderTab(); } },
     h('option', { value: '' }, label), options.map(([v, n]) => h('option', { value: v, selected: state.filters[key] === v }, n)));
-  return h('div', { class: 'filters' }, search, platform, pick('country', 'Any country', COUNTRIES), pick('language', 'Any language', LANGUAGES));
+  return h('div', { class: 'filters' }, search, platform, pick('topic', 'Any topic', TOPICS), pick('country', 'Any country', COUNTRIES), pick('language', 'Any language', LANGUAGES));
 }
 
 function leadCard(l) {
@@ -226,7 +228,8 @@ function leadCard(l) {
     h('div', {},
       h('div', { class: 'name' }, l.displayName),
       h('div', { class: 'meta' }, [l.platform, l.followers != null ? num(l.followers) + ' followers' : null, l.country, l.contactEmail].filter(Boolean).join(' · ')),
-      l.bio ? h('div', { class: 'meta' }, l.bio.slice(0, 160)) : null),
+      l.bio ? h('div', { class: 'meta' }, l.bio.slice(0, 160)) : null,
+      (l.topics || []).length ? h('div', {}, l.topics.map((t) => h('span', { class: 'pill' }, TOPIC_LABEL[t] || t))) : null),
     h('div', { class: 'row', onclick: (e) => e.stopPropagation() },
       h('select', { 'aria-label': 'Status', class: 'stage ' + (STAGE_CLASS[l.stage] || ''), onchange: (e) => act(() => api('/leads/' + l.id + '/stage', { method: 'POST', body: { stage: e.target.value } }), 'Saved') },
         ROW_STAGES.map(([k, label]) => h('option', { value: k, selected: l.stage === k }, label))),
@@ -255,6 +258,7 @@ function detail(l) {
     h('h2', {}, l.displayName),
     h('div', { class: 'meta' }, l.platform + ' · ' + num(l.followers) + ' followers · ' + (l.country ? (COUNTRIES.find(([c]) => c === l.country.toUpperCase()) || [0, l.country])[1] : 'country unknown') + ' · found via ' + l.source),
     link ? h('p', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link)) : null,
+    (l.topics || []).length ? h('div', {}, l.topics.map((t) => h('span', { class: 'pill' }, TOPIC_LABEL[t] || t))) : null,
     h('h3', {}, 'Details'),
     h('div', { class: 'field' }, h('label', { for: 'f-email' }, 'Public contact email (only one they publish themselves)'), email),
     h('div', { class: 'field' }, h('label', { for: 'f-country' }, 'Country'), country),
@@ -268,6 +272,11 @@ function detail(l) {
 function findCard() {
   const box = h('div', { class: 'card' });
   const out = h('div', { class: 'meta', style: 'margin-top:8px' });
+  const topicBoxes = TOPICS.map(([k, label]) => {
+    const cb = h('input', { type: 'checkbox', value: k, id: 'topic-' + k }); cb.checked = true;
+    return h('label', { class: 'chip', for: 'topic-' + k }, cb, ' ' + label);
+  });
+  const setAllTopics = (on) => topicBoxes.forEach((b) => { b.querySelector('input').checked = on; });
   const platform = h('select', { 'aria-label': 'Search platform' }, h('option', { value: '' }, 'All platforms'), PLATFORMS.map((p) => h('option', { value: p }, p.charAt(0) + p.slice(1).toLowerCase())));
   const country = h('select', { 'aria-label': 'Target country' }, h('option', { value: '' }, 'Any country'), COUNTRIES.map(([v, n]) => h('option', { value: v }, n)));
   const language = h('select', { 'aria-label': 'Language' }, h('option', { value: '' }, 'Any language'), LANGUAGES.map(([v, n]) => h('option', { value: n }, n)));
@@ -275,16 +284,20 @@ function findCard() {
   const limit = h('select', { 'aria-label': 'How many' }, [10, 15, 25].map((n) => h('option', { value: n, selected: n === 15 }, 'Up to ' + n)));
   const go = h('button', { id: 'find-btn', style: 'font-size:18px;padding:14px 28px' }, 'Find partners');
   box.append(
+    h('div', { class: 'meta' }, 'Content: ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); setAllTopics(true); } }, 'all'), ' · ', h('a', { href: '#', onclick: (e) => { e.preventDefault(); setAllTopics(false); } }, 'none')),
+    h('div', { class: 'row chips' }, topicBoxes),
     h('div', { class: 'row' }, platform, country, language, go),
     h('details', {}, h('summary', {}, 'More options'), h('div', { class: 'row' }, focus, limit)),
-    h('p', { class: 'meta' }, 'Pick a platform, country and language, for example Telegram + France + French, then press Find partners. Takes about 1–3 minutes. Only public pages are used; private groups, closed channels and anything behind a login cannot be searched.'),
+    h('p', { class: 'meta' }, 'Tick the content topics, pick a platform, country and language, for example Telegram + France + French, then press Find partners. Leave all topics ticked for no topic restriction. Takes about 1–3 minutes. Only public pages are used; private groups, closed channels and anything behind a login cannot be searched.'),
     out);
 
   go.addEventListener('click', async () => {
+    const picked = topicBoxes.map((b) => b.querySelector('input')).filter((i) => i.checked).map((i) => i.value);
+    if (!picked.length) return toast('Tick at least one content topic.', true);
     go.disabled = true; out.textContent = 'Starting…';
     const startedAt = new Date().toISOString();
     try {
-      const { jobId } = await api('/discovery/ai', { method: 'POST', body: { platform: platform.value || undefined, country: country.value || undefined, language: language.value || undefined, focus: focus.value.trim() || undefined, limit: Number(limit.value) } });
+      const { jobId } = await api('/discovery/ai', { method: 'POST', body: { platform: platform.value || undefined, country: country.value || undefined, language: language.value || undefined, topics: picked.length < TOPICS.length ? picked : undefined, focus: focus.value.trim() || undefined, limit: Number(limit.value) } });
       const began = Date.now();
       for (;;) {
         out.textContent = 'Searching the web… ' + Math.round((Date.now() - began) / 1000) + 's (this usually takes 1–3 minutes)';
@@ -297,6 +310,7 @@ function findCard() {
         out.textContent = ''; go.disabled = false;
         state.since = r.created ? startedAt : ''; state.offset = 0; state.filters = {};
         if (platform.value) state.filters.platform = platform.value;
+        if (picked.length === 1) state.filters.topic = picked[0];
         if (country.value) state.filters.country = country.value;
         const lang = LANGUAGES.find(([, n]) => n === language.value);
         if (lang) state.filters.language = lang[0];

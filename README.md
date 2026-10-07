@@ -24,6 +24,8 @@ Everyone on the team has their own login.
 3. **Sign in.** Approved people sign in with email and password and stay signed in for 7 days.
 
 The admin page also lets an admin make someone an admin, reset a forgotten password, or switch a person off (they are signed out immediately).
+**Making yourself an admin:** register on the sign-in page, then run `npm run make-admin -- you@example.com` where the app's `DATABASE_URL` is set
+(on Railway: `railway run npm run make-admin -- you@example.com`). It approves the account and makes it an admin. Or sign in once with the admin key and use the Admin page.
 The shared `ADMIN_API_KEY` keeps working as an always-admin login, so you can never lock yourself out. Passwords are stored only as salted scrypt hashes; sessions
 are random tokens whose hashes are stored; sign-in and registration are rate limited. Every approval, rejection and role change is written to the audit log.
 Actions in the app (like a status change) are recorded under the signed-in person's name.
@@ -40,7 +42,7 @@ Press **Find partners**. It searches every category below in one go:
 football channels · sports news pages · prediction/tips creators · sports influencers · betting & prediction communities ·
 football websites · public Telegram channels · public Reddit communities · public X accounts · YouTube channels · TikTok, Instagram and Facebook pages with public profiles
 
-Under *Narrow the search* you can add a target country, a language and an extra focus (for example "Swahili-speaking tipsters"). Claude runs web searches
+Tick the **content topics** you care about (Football, Sports, Predictions, Betting, Tipsters, Sports News, MMA, Basketball, Tennis; all ticked means no restriction). The AI is told to keep to those topics, and each partner it finds is tagged with them, so the list has an **Any topic** filter. A tag is what you asked for, not something the app verified. Under *More options* you can add a target country, a language and an extra focus (for example "Swahili-speaking tipsters"). Claude runs web searches
 (several per run), and a run takes roughly 1–3 minutes.
 
 **Public information only.** Claude searches the open web like a person would. It cannot and does not look into private groups,
@@ -107,7 +109,7 @@ This tool helps with the research; **you** are responsible for the programme bei
 
 `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · admin: `GET /admin/users` (`status`), `POST /admin/users/:id/{approve,reject,disable,make-admin,remove-admin,reset-password}` ·
 `POST /discovery/ai` (then poll `GET /discovery/ai/:id`) · `POST /discovery/urls` ·
-`GET /leads` (`stage`, `platform`, `since`, `q`, `limit`, `offset`) · `GET /leads/stats` · `GET /leads/:id` ·
+`GET /leads` (`stage`, `platform`, `topic`, `country`, `language`, `since`, `q`, `limit`, `offset`) · `GET /leads/stats` · `GET /leads/:id` ·
 `PATCH /leads/:id` · `POST /leads/:id/stage` (`FOUND`, `CONTACTED`, `IN_PROGRESS`, `REGISTERED`, `DECLINED`) · `DELETE /leads/:id` · public: `GET /health`.
 
 ## Tests

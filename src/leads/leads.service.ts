@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PartnerStage, Platform, Prisma } from '@prisma/client';
+import { TopicKey } from '../discovery/topics';
 import { PrismaService } from '../common/prisma.service';
 import { AuditService } from '../common/audit.service';
 
@@ -12,6 +13,8 @@ export interface LeadQuery {
   country?: string;
   /** ISO 639-1 language code; matches the code itself or the language's English name. */
   language?: string;
+  /** One content topic, e.g. MMA. */
+  topic?: TopicKey;
   q?: string;
   /** Only leads found at or after this time (used for "found today" / "last search"). */
   since?: Date;
@@ -32,6 +35,7 @@ export class LeadsService {
       ...(q.stage ? { stage: q.stage } : {}),
       ...(q.country ? { country: { equals: q.country, mode: 'insensitive' as const } } : {}),
       ...(q.language ? { AND: [{ OR: this.languageMatches(q.language) }] } : {}),
+      ...(q.topic ? { topics: { has: q.topic } } : {}),
       ...(q.since ? { discoveredAt: { gte: q.since } } : {}),
       ...(q.q
         ? { OR: [{ displayName: { contains: q.q, mode: 'insensitive' } }, { handle: { contains: q.q, mode: 'insensitive' } }, { bio: { contains: q.q, mode: 'insensitive' } }] }
@@ -60,7 +64,7 @@ export class LeadsService {
         take,
         skip: Math.max(q.offset ?? 0, 0),
         // The list doesn't need the long recent-content payload.
-        select: { id: true, platform: true, handle: true, url: true, displayName: true, bio: true, followers: true, country: true, language: true, contactEmail: true, source: true, discoveredAt: true, stage: true, stageNote: true, stageBy: true, stageAt: true },
+        select: { id: true, platform: true, handle: true, url: true, displayName: true, bio: true, followers: true, country: true, language: true, contactEmail: true, source: true, discoveredAt: true, topics: true, stage: true, stageNote: true, stageBy: true, stageAt: true },
       }),
       this.prisma.lead.count({ where }),
     ]);
