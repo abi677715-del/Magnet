@@ -7,6 +7,7 @@ import { DiscoveryService } from './discovery.service';
 import { AiDiscoveryService } from './ai-discovery.service';
 import { Platform } from '@prisma/client';
 import { PLATFORM_SEGMENTS, SEGMENTS, SegmentKey } from './ai-discovery';
+import { effectiveTopics, TOPIC_KEYS, TOPICS } from './topics';
 
 class AiSearchDto {
   /** Leave out to search every category. */
@@ -14,6 +15,8 @@ class AiSearchDto {
   @IsOptional() @IsIn(Object.values(Platform)) platform?: Platform;
   @IsOptional() @IsString() @Length(2, 2) country?: string;
   @IsOptional() @IsString() @MaxLength(40) language?: string;
+  /** Leave out (or tick all) for no topic restriction. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsIn(TOPIC_KEYS, { each: true }) topics?: string[];
   @IsOptional() @IsString() @MaxLength(200) focus?: string;
   @IsOptional() @IsInt() @Min(3) @Max(25) limit?: number;
 }
@@ -36,9 +39,15 @@ export class DiscoveryController {
       platform: dto.platform,
       country: dto.country?.toUpperCase(),
       language: dto.language,
+      topics: effectiveTopics(dto.topics),
       focus: dto.focus,
       limit: dto.limit ?? 15,
     });
+  }
+
+  @Get('ai/topics')
+  topics() {
+    return TOPICS;
   }
 
   @Get('ai/segments')

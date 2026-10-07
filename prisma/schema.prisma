@@ -41,6 +41,7 @@ model Lead {
   recentContent Json       @default("[]") // [{ title, text, url, publishedAt }]
   source        String // ai-search | youtube-search | url | csv | json
   discoveredAt  DateTime   @default(now())
+  topics        String[]   @default([]) // content topics the partner was found for, e.g. MMA, TENNIS
 
   stage         PartnerStage @default(FOUND)
   stageNote     String?

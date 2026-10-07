@@ -29,6 +29,7 @@ export class IngestService {
           language: raw.language ?? null,
           contactEmail: raw.contactEmail ?? null,
           recentContent: (raw.recentContent ?? []) as Prisma.InputJsonValue,
+          topics: raw.topics ?? [],
           source: raw.source,
         },
       });
@@ -47,6 +48,8 @@ export class IngestService {
         language: existing.language ?? raw.language ?? undefined,
         contactEmail: existing.contactEmail ?? raw.contactEmail ?? undefined,
         recentContent: hasNewContent ? (raw.recentContent as Prisma.InputJsonValue) : undefined,
+        // Found again for another topic: add it, never drop what is already tagged.
+        topics: raw.topics?.length ? [...new Set([...existing.topics, ...raw.topics])] : undefined,
       },
     });
     return { id: existing.id, created: false };

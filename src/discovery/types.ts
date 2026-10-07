@@ -11,5 +11,6 @@ export interface RawLead {
   language?: string | null;
   contactEmail?: string | null;
   recentContent?: { title?: string; text?: string; url?: string; publishedAt?: string }[];
+  topics?: string[];
   source: string;
 }

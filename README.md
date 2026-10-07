@@ -42,7 +42,7 @@ Press **Find partners**. It searches every category below in one go:
 football channels · sports news pages · prediction/tips creators · sports influencers · betting & prediction communities ·
 football websites · public Telegram channels · public Reddit communities · public X accounts · YouTube channels · TikTok, Instagram and Facebook pages with public profiles
 
-Under *Narrow the search* you can add a target country, a language and an extra focus (for example "Swahili-speaking tipsters"). Claude runs web searches
+Tick the **content topics** you care about (Football, Sports, Predictions, Betting, Tipsters, Sports News, MMA, Basketball, Tennis; all ticked means no restriction). The AI is told to keep to those topics, and each partner it finds is tagged with them, so the list has an **Any topic** filter. A tag is what you asked for, not something the app verified. Under *More options* you can add a target country, a language and an extra focus (for example "Swahili-speaking tipsters"). Claude runs web searches
 (several per run), and a run takes roughly 1–3 minutes.
 
 **Public information only.** Claude searches the open web like a person would. It cannot and does not look into private groups,
@@ -109,7 +109,7 @@ This tool helps with the research; **you** are responsible for the programme bei
 
 `POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · admin: `GET /admin/users` (`status`), `POST /admin/users/:id/{approve,reject,disable,make-admin,remove-admin,reset-password}` ·
 `POST /discovery/ai` (then poll `GET /discovery/ai/:id`) · `POST /discovery/urls` ·
-`GET /leads` (`stage`, `platform`, `since`, `q`, `limit`, `offset`) · `GET /leads/stats` · `GET /leads/:id` ·
+`GET /leads` (`stage`, `platform`, `topic`, `country`, `language`, `since`, `q`, `limit`, `offset`) · `GET /leads/stats` · `GET /leads/:id` ·
 `PATCH /leads/:id` · `POST /leads/:id/stage` (`FOUND`, `CONTACTED`, `IN_PROGRESS`, `REGISTERED`, `DECLINED`) · `DELETE /leads/:id` · public: `GET /health`.
 
 ## Tests

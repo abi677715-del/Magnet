@@ -78,3 +78,7 @@ ul.plain { margin:0; padding-left:18px; }
 .stats { display:flex; gap:16px; flex-wrap:wrap; justify-content:center; color:var(--muted); font-size:13px; } .stats b { color:var(--brand); font-size:15px; }
 .toast { position:fixed; bottom:64px; left:50%; transform:translateX(-50%); background:var(--brand); color:var(--on-brand); font-weight:600; padding:10px 16px; border-radius:10px; max-width:90vw; z-index:9; }
 .toast.err { background:var(--bad); color:#fff; }
+.chips { gap:6px; margin:8px 0; }
+.chip { display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border:1px solid var(--line); border-radius:999px; background:var(--raised); cursor:pointer; font-size:14px; user-select:none; }
+.chip:has(input:checked) { border-color:var(--brand); color:var(--brand); }
+.chip input { accent-color:var(--brand); margin:0; }
