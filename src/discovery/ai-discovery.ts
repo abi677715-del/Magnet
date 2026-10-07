@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { Platform } from '@prisma/client';
 import { config } from '../common/config';
 import { escapeUntrusted } from '../common/untrusted';
 import { AiCandidate, extractCandidates } from './ai-validate';
@@ -20,8 +21,27 @@ export const SEGMENTS = {
 } as const;
 export type SegmentKey = keyof typeof SEGMENTS;
 
+/** Searching one platform narrows the categories to that platform's. */
+export const PLATFORM_SEGMENTS: Record<Platform, SegmentKey[]> = {
+  TELEGRAM: ['TELEGRAM_CHANNELS'],
+  YOUTUBE: ['YOUTUBE_CHANNELS'],
+  TIKTOK: ['TIKTOK_CREATORS'],
+  INSTAGRAM: ['INSTAGRAM_ACCOUNTS'],
+  FACEBOOK: ['FACEBOOK_PAGES'],
+  X: ['X_ACCOUNTS'],
+  REDDIT: ['REDDIT_COMMUNITIES'],
+  WEBSITE: ['SPORTS_NEWS', 'FOOTBALL_WEBSITES'],
+};
+
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+export const countryName = (code: string): string => {
+  try { return regionNames.of(code.toUpperCase()) ?? code; } catch { return code; }
+};
+
 export interface AiSearchRequest {
   segments: SegmentKey[];
+  /** When set, only partners on this platform are kept. */
+  platform?: Platform;
   country?: string;
   language?: string;
   focus?: string;
@@ -65,7 +85,7 @@ export class AnthropicDiscoverer implements AiDiscoverer {
     const user = `Find up to ${req.limit} partner candidates in these categories:
 ${segments}
 
-${req.country ? `Target market: ${req.country}\n` : ''}${req.language ? `Language of the audience: ${escapeUntrusted(req.language, 40)}\n` : ''}${req.focus ? `Extra focus from the manager: ${escapeUntrusted(req.focus, 200)}\n` : ''}
+${req.platform ? `Platform: ONLY ${req.platform} accounts/pages. Ignore anything on other platforms.\n` : ''}${req.country ? `Audience country: ${countryName(req.country)} (${req.country}). ONLY include partners whose audience is mainly in this country; search with local terms and local sites.\n` : ''}${req.language ? `Content language: ${escapeUntrusted(req.language, 40)}. ONLY include partners who publish in this language; run your searches in this language too.\n` : ''}${req.focus ? `Extra focus from the manager: ${escapeUntrusted(req.focus, 200)}\n` : ''}
 Spread the results across the categories. Search the web now, then give the JSON.`;
 
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: user }];
