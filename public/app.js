@@ -97,8 +97,8 @@ async function renderTab() {
   const q = new URLSearchParams({ ...state.filters, ...(state.since ? { since: state.since } : {}), limit: '25', offset: String(state.offset) });
   try {
     const { items, total } = await api('/leads?' + q);
-    cards.find ||= findCard(); cards.links ||= linksCard();
-    const parts = [cards.find, cards.links, filterBar()];
+    cards.find ||= findCard();
+    const parts = [cards.find, filterBar()];
     if (state.since) parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => { state.since = ''; state.offset = 0; renderTab(); } }, 'Show all partners')));
     if (!items.length) parts.push(h('p', { class: 'muted' }, 'Nothing here yet. Press "Find partners" to start.'));
     parts.push(...items.map(leadCard));
@@ -210,21 +210,6 @@ function findCard() {
     } catch (e) { out.textContent = e.message; toast(e.message, true); go.disabled = false; }
   });
   return box;
-}
-
-/** Adding a partner you found yourself: paste one or more links. */
-function linksCard() {
-  const out = h('div', { class: 'meta' });
-  const urls = h('textarea', { placeholder: 'Paste links, one per line: YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit or a website' });
-  const add = h('button', { class: 'ghost', onclick: async () => {
-    out.textContent = 'Working…';
-    try {
-      const r = await api('/discovery/urls', { method: 'POST', body: { urls: urls.value.split(/\s*\n\s*/).map((x) => x.trim()).filter(Boolean) } });
-      out.replaceChildren(...r.results.map((x) => h('div', {}, (x.status === 'saved' ? '✓ ' : '✗ ') + x.url + (x.note ? ' — ' + x.note : ''))));
-      urls.value = ''; loadStats();
-    } catch (e) { out.textContent = e.message; toast(e.message, true); }
-  } }, 'Add links');
-  return h('details', { class: 'card' }, h('summary', {}, 'Add partners by link'), urls, h('div', { class: 'row' }, add), out);
 }
 
 start();

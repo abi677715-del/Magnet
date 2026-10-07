@@ -28,6 +28,5 @@ import { AI_DISCOVERER } from '../src/discovery/ai-discovery';
   await app.listen(4100);
   const api = (p: string, body: unknown) => fetch('http://localhost:4100' + p, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.ADMIN_API_KEY }, body: JSON.stringify(body) });
   const bio = 'Weekly football betting previews and match analysis for East African fans.';
-  await api('/discovery/urls', { urls: ['https://t.me/s/footballpro'] }); // unreachable in the sandbox: saved as a bare link
   console.log('READY');
 })();

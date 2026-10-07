@@ -5,14 +5,14 @@ does any contacting** and records the result. Nothing is ever sent to anyone.
 
 ```
  AI web search  ──►  partners  ──►  Found → Contacted → In progress → Registered  (or Declined)
- Pasted links   ──►                 (set by your team; nothing is ever sent)
+ (set by your team; nothing is ever sent)
 ```
 
 ## What it does
 
 | Step | How |
 |---|---|
-| **Find** | One big **Find partners** button searches the public web across YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit and websites (see below). You can also paste links you found yourself. The same creator found twice is one partner. |
+| **Find** | One big **Find partners** button searches the public web across YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit and websites (see below). The same creator found twice is one partner. |
 | **Track** | Each partner has a stage you set by hand: **Found → Contacted → In progress → Registered** (or **Declined**), with an optional note. The header shows how many are in each stage, and you can filter the list by stage. Who changed it and when is recorded. |
 
 ## Finding partners with AI
@@ -83,7 +83,7 @@ This tool helps with the research; **you** are responsible for the programme bei
 
 - One shared team key (`ADMIN_API_KEY`) protects the dashboard and API; the API refuses everything if it isn't set. For a larger team, put it behind your company's login/VPN.
 - Text from creators' profiles is untrusted: it is never inserted into the page as HTML, it is fenced off from the AI's instructions.
-- Pasted URLs are fetched by the server, so private/internal addresses are refused (including after redirects). Only managers with the key can trigger a fetch.
+- Pages found by the search are fetched by the server, so private/internal addresses are refused (including after redirects).
 
 ## API (all need `Authorization: Bearer <ADMIN_API_KEY>`)
 
