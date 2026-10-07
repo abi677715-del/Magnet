@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { LeadStatus, Platform, Prisma } from '@prisma/client';
+import { Platform, Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma.service';
 import { RawLead } from './types';
-
-export const hasEnoughInfoToScore = (l: { bio?: string | null; recentContent?: unknown }) =>
-  (l.bio ?? '').trim().length >= 20 || (Array.isArray(l.recentContent) && l.recentContent.length > 0);
 
 @Injectable()
 export class IngestService {
@@ -12,8 +9,7 @@ export class IngestService {
 
   /**
    * Saves a discovered lead. The same creator found twice is one lead — we
-   * refresh what we know about them but never touch a manager's decision,
-   * score, or review notes.
+   * refresh what we know about them.
    */
   async upsert(raw: RawLead): Promise<{ id: string; created: boolean }> {
     const handle = raw.handle.trim().toLowerCase();
@@ -66,10 +62,5 @@ export class IngestService {
       r.created ? created++ : updated++;
     }
     return { created, updated, ids };
-  }
-
-  /** Leads still waiting to be scored. */
-  pendingCount() {
-    return this.prisma.lead.count({ where: { status: LeadStatus.NEW } });
   }
 }

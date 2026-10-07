@@ -46,22 +46,15 @@ async function api(path, { method = 'GET', body } = {}) {
 }
 
 const TABS = [
-  { id: 'review', label: 'To review', query: { status: 'SCORED', priority: 'true' } },
-  { id: 'all', label: 'All leads', query: {}, filters: true },
-  { id: 'approved', label: 'Shortlist', query: { status: 'APPROVED' } },
-  { id: 'attention', label: 'Needs attention', query: { needsAttention: 'true' } },
+  { id: 'partners', label: 'Partners' },
   { id: 'add', label: 'Add leads' },
 ];
-const STATUSES = ['NEW', 'SCORED', 'APPROVED', 'REJECTED'];
+const STAGES = [['FOUND', 'Found'], ['CONTACTED', 'Contacted'], ['IN_PROGRESS', 'In progress'], ['REGISTERED', 'Registered'], ['DECLINED', 'Declined']];
+const STAGE_LABEL = Object.fromEntries(STAGES);
+const STAGE_CLASS = { FOUND: '', CONTACTED: 'warn', IN_PROGRESS: 'warn', REGISTERED: 'good', DECLINED: 'bad' };
 const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'REDDIT', 'TELEGRAM', 'WEBSITE'];
-const FLAG_TEXT = {
-  AUDIENCE_INCLUDES_MINORS: 'Audience may include under-18s', FIXED_MATCH_SCAM: 'Sells "fixed matches" / sure tips', ILLEGAL_OR_HATEFUL: 'Illegal or hateful content',
-  GUARANTEED_WINS_CLAIMS: 'Promises guaranteed wins', FAKE_ENGAGEMENT: 'Signs of fake engagement', SPAM_OR_LOW_QUALITY: 'Spam / low quality', ADULT_CONTENT: 'Adult content',
-  OUTSIDE_TARGET_MARKETS: 'Outside target markets',
-};
-const HARD = new Set(['AUDIENCE_INCLUDES_MINORS', 'FIXED_MATCH_SCAM', 'ILLEGAL_OR_HATEFUL', 'OUTSIDE_TARGET_MARKETS']);
 
-const state = { tab: 'review', filters: {}, selected: null, offset: 0 };
+const state = { tab: 'partners', filters: {}, selected: null, offset: 0, since: '' };
 
 function signOut() { store.del('key'); $('app').hidden = true; $('login').hidden = false; $('logout').hidden = true; $('stats').replaceChildren(); }
 
@@ -86,35 +79,28 @@ function showApp() {
 async function loadStats() {
   try {
     const s = await api('/leads/stats');
-    const by = s.byStatus || {};
-    $('stats').replaceChildren(
-      h('span', {}, h('b', {}, s.awaitingReviewPriority), ' priority leads waiting'),
-      h('span', {}, h('b', {}, by.SCORED || 0), ' scored'), h('span', {}, h('b', {}, by.NEW || 0), ' unscored'),
-      h('span', {}, h('b', {}, by.APPROVED || 0), ' on shortlist'), h('span', {}, h('b', {}, by.REJECTED || 0), ' rejected'),
-      s.needsAttention ? h('span', { class: 'pill warn' }, s.needsAttention + ' need attention') : null,
-    );
+    $('stats').replaceChildren(h('span', {}, h('b', {}, s.total), ' partners found'), h('span', {}, h('b', {}, s.last24h), ' in the last 24h'),
+      ...STAGES.slice(1).map(([k, label]) => h('span', {}, h('b', {}, (s.byStage || {})[k] || 0), ' ' + label.toLowerCase())));
   } catch { /* stats are a nicety */ }
 }
 
 function renderTabs() {
-  $('tabs').replaceChildren(...TABS.map((t) => h('button', { class: state.tab === t.id ? 'on' : '', onclick: () => { state.tab = t.id; state.selected = null; state.offset = 0; closeDetail(); renderTabs(); renderTab(); } }, t.label)));
+  $('tabs').replaceChildren(...TABS.map((t) => h('button', { class: state.tab === t.id ? 'on' : '', onclick: () => { state.tab = t.id; state.offset = 0; closeDetail(); renderTabs(); renderTab(); } }, t.label)));
 }
 
 function closeDetail() { $('detail-pane').hidden = true; document.querySelector('.layout').classList.remove('has-detail'); state.selected = null; }
 
 async function renderTab() {
-  const tab = TABS.find((t) => t.id === state.tab);
   const pane = $('list-pane');
-  if (tab.id === 'add') return renderAdd(pane);
+  if (state.tab === 'add') return renderAdd(pane);
   pane.replaceChildren(h('p', { class: 'muted' }, 'Loading…'));
-  const q = new URLSearchParams({ ...tab.query, ...(tab.filters ? state.filters : {}), limit: '25', offset: String(state.offset) });
+  const q = new URLSearchParams({ ...state.filters, ...(state.since ? { since: state.since } : {}), limit: '25', offset: String(state.offset) });
   try {
     const { items, total } = await api('/leads?' + q);
-    const parts = [];
-    if (tab.filters) parts.push(filterBar());
-    if (tab.id === 'review') parts.push(h('div', { class: 'row' }, h('button', { onclick: runScoring }, 'Score new leads')));
-    if (['all', 'approved', 'review'].includes(tab.id)) parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => exportCsv(q) }, 'Export to CSV (' + total + ')')));
-    if (!items.length) parts.push(h('p', { class: 'muted' }, tab.id === 'review' ? 'Nothing waiting. Add leads, then press "Score new leads".' : 'No leads here.'));
+    const parts = [findCard(), filterBar()];
+    parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', disabled: !total, onclick: () => exportCsv(q) }, 'Export to CSV (' + total + ')'),
+      state.since ? h('button', { class: 'ghost', onclick: () => { state.since = ''; state.offset = 0; renderTab(); } }, 'Show all partners') : null));
+    if (!items.length) parts.push(h('p', { class: 'muted' }, 'Nothing here yet. Press "Find partners" to start.'));
     parts.push(...items.map(leadCard));
     parts.push(h('div', { class: 'row' },
       h('button', { class: 'ghost', disabled: state.offset === 0, onclick: () => { state.offset = Math.max(0, state.offset - 25); renderTab(); } }, 'Previous'),
@@ -137,35 +123,24 @@ async function exportCsv(q) {
 }
 
 function filterBar() {
-  const sel = (key, label, options) => h('select', { 'aria-label': label, onchange: (e) => { if (e.target.value) state.filters[key] = e.target.value; else delete state.filters[key]; state.offset = 0; renderTab(); } },
-    h('option', { value: '' }, label), options.map((o) => h('option', { value: o, selected: state.filters[key] === o }, o)));
+  const platform = h('select', { 'aria-label': 'Platform', onchange: (e) => { if (e.target.value) state.filters.platform = e.target.value; else delete state.filters.platform; state.offset = 0; renderTab(); } },
+    h('option', { value: '' }, 'Any platform'), PLATFORMS.map((o) => h('option', { value: o, selected: state.filters.platform === o }, o)));
   const search = h('input', { type: 'search', placeholder: 'Search name, handle, bio', value: state.filters.q || '', onchange: (e) => { if (e.target.value.trim()) state.filters.q = e.target.value.trim(); else delete state.filters.q; state.offset = 0; renderTab(); } });
-  return h('div', { class: 'filters' }, search, sel('status', 'Any status', STATUSES), sel('platform', 'Any platform', PLATFORMS),
-    sel('minScore', 'Any score', ['50', '60', '70', '80']));
+  const stage = h('select', { 'aria-label': 'Stage', onchange: (e) => { if (e.target.value) state.filters.stage = e.target.value; else delete state.filters.stage; state.offset = 0; renderTab(); } },
+    h('option', { value: '' }, 'Any stage'), STAGES.map(([k, label]) => h('option', { value: k, selected: state.filters.stage === k }, label)));
+  return h('div', { class: 'filters' }, search, platform, stage);
 }
-
-function scoreBadge(score) {
-  const cls = score == null ? '' : score >= 70 ? 'hi' : score >= 45 ? 'mid' : 'lo';
-  return h('div', { class: 'score ' + cls }, score == null ? '—' : score);
-}
-
-function flagPills(flags) { return (flags || []).map((f) => h('span', { class: 'pill ' + (HARD.has(f) ? 'bad' : 'warn') }, FLAG_TEXT[f] || f)); }
 
 function leadCard(l) {
+  const link = safeUrl(l.url);
   return h('div', { class: 'card lead' + (state.selected === l.id ? ' sel' : ''), onclick: () => openLead(l.id) },
-    scoreBadge(l.score),
+    h('div', { class: 'score' }, l.platform.slice(0, 2)),
     h('div', {},
       h('div', { class: 'name' }, l.displayName),
-      h('div', { class: 'meta' }, [l.platform, num(l.followers) + ' followers', l.country, l.category && l.category.replaceAll('_', ' ').toLowerCase()].filter(Boolean).join(' · ')),
-      l.summary ? h('div', { class: 'meta' }, l.summary) : l.scoreError ? h('div', { class: 'meta' }, '⚠ ' + l.scoreError) : null,
-      h('div', {}, flagPills(l.redFlags))),
-    h('span', { class: 'pill' + (l.isPriority ? ' good' : '') }, l.isPriority ? 'PRIORITY' : l.status));
-}
-
-async function runScoring() {
-  try { toast('Scoring…'); const r = await api('/classification/run', { method: 'POST', body: {} });
-    toast(r.alreadyRunning ? 'A scoring run is already in progress.' : 'Scored ' + r.scored + (r.failed ? ', ' + r.failed + ' need attention' : '') + '.'); loadStats(); renderTab(); }
-  catch (e) { toast(e.message, true); }
+      h('div', { class: 'meta' }, [l.platform, l.followers != null ? num(l.followers) + ' followers' : null, l.country, l.contactEmail].filter(Boolean).join(' · ')),
+      l.bio ? h('div', { class: 'meta' }, l.bio.slice(0, 160)) : null),
+    h('div', {}, h('span', { class: 'pill ' + (STAGE_CLASS[l.stage] || '') }, STAGE_LABEL[l.stage] || l.stage),
+      link ? h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', class: 'pill', onclick: (e) => e.stopPropagation() }, 'Open') : null));
 }
 
 async function openLead(id) {
@@ -180,91 +155,84 @@ async function act(fn, okMsg) {
   try { await fn(); toast(okMsg); loadStats(); renderTab(); if (state.selected) openLead(state.selected); } catch (e) { toast(e.message, true); }
 }
 
-function bar(label, v, w) { return h('div', { class: 'bar' }, h('span', { style: 'background:none' }, label + (w != null ? ' ×' + w : '')), h('span', {}, h('i', { style: 'width:' + Math.max(0, Math.min(100, v)) + '%' })), h('b', {}, v)); }
-
 function detail(l) {
-  const b = l.breakdown;
   const link = safeUrl(l.url);
   const email = h('input', { type: 'email', value: l.contactEmail || '', placeholder: 'name@example.com', id: 'f-email' });
   const country = h('input', { value: l.country || '', maxlength: 2, size: 3, placeholder: 'KE', id: 'f-country' });
   const bio = h('textarea', { id: 'f-bio' }); bio.value = l.bio || '';
-  const canDecide = ['NEW', 'SCORED', 'APPROVED', 'REJECTED'].includes(l.status);
-  const blocked = (l.redFlags || []).some((f) => HARD.has(f));
-
   return h('div', { class: 'card' },
     h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: closeDetail }, 'Close')),
-    h('div', { class: 'lead', style: 'cursor:default;padding:0;margin:0;border:0' }, scoreBadge(l.score),
-      h('div', {}, h('h2', {}, l.displayName), h('div', { class: 'meta' }, l.platform + ' · ' + num(l.followers) + ' followers · ' + (l.country || 'country unknown') + ' · ' + l.status)), h('span', {})),
+    h('h2', {}, l.displayName),
+    h('div', { class: 'meta' }, l.platform + ' · ' + num(l.followers) + ' followers · ' + (l.country || 'country unknown') + ' · found via ' + l.source),
     link ? h('p', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link)) : null,
-    l.summary ? h('p', {}, l.summary) : l.scoreError ? h('div', { class: 'banner' }, l.scoreError) : null,
-    h('div', {}, flagPills(l.redFlags)),
-    blocked ? h('div', { class: 'banner' }, 'This lead has a disqualifying flag and cannot be approved.') : null,
-    b ? h('div', {}, h('h3', {}, 'Score breakdown (weight)'),
-      bar('Audience fit', b.sub.audienceRelevance, b.weights.audienceRelevance), bar('Content fit', b.sub.contentFit, b.weights.contentFit),
-      bar('Credibility', b.sub.credibility, b.weights.credibility), bar('Promo experience', b.sub.promoExperience, b.weights.promoExperience),
-      bar('Reach', b.sub.reach, b.weights.reach), b.capReason ? h('div', { class: 'banner' }, 'Score capped at ' + b.cap + ': ' + b.capReason) : null) : null,
-    l.strengths.length ? h('div', {}, h('h3', {}, 'Strengths'), h('ul', { class: 'plain' }, l.strengths.map((s) => h('li', {}, s)))) : null,
-    l.concerns.length ? h('div', {}, h('h3', {}, 'Concerns'), h('ul', { class: 'plain' }, l.concerns.map((s) => h('li', {}, s)))) : null,
-    l.reviewedBy ? h('p', { class: 'meta' }, 'Last decision by ' + l.reviewedBy + (l.reviewNote ? ': ' + l.reviewNote : '')) : null,
-
-    h('h3', {}, 'Decision'),
-    h('div', { class: 'row' },
-      canDecide && l.status !== 'APPROVED' ? h('button', { class: 'good', disabled: !l.scoredAt || blocked, onclick: () => act(() => api('/leads/' + l.id + '/approve', { method: 'POST', body: { note: noteVal() } }), 'Added to shortlist') }, 'Add to shortlist') : null,
-      canDecide && l.status !== 'REJECTED' ? h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id + '/reject', { method: 'POST', body: { note: noteVal() } }), 'Marked as not a fit') }, 'Not a fit') : null,
-      h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id + '/rescore', { method: 'POST' }), 'Re-scored') }, 'Re-score')),
-    h('div', { class: 'field' }, h('label', { for: 'f-note' }, 'Note (optional)'), h('input', { id: 'f-note', maxlength: 400, placeholder: 'Why? (optional)' })),
-
-    h('h3', {}, 'Contact details'),
+    h('h3', {}, 'Partner stage'),
+    h('p', { class: 'meta' }, 'Update this as your team reaches out. The app never contacts anyone itself.'),
+    h('div', { class: 'row' }, STAGES.map(([k, label]) => h('button', { class: l.stage === k ? 'good' : 'ghost', disabled: l.stage === k,
+      onclick: () => act(() => api('/leads/' + l.id + '/stage', { method: 'POST', body: { stage: k, note: ($('f-note').value.trim() || undefined) } }), 'Marked as ' + label.toLowerCase()) }, label))),
+    h('div', { class: 'field' }, h('label', { for: 'f-note' }, 'Note (optional)'), h('input', { id: 'f-note', maxlength: 400, placeholder: 'e.g. emailed on Monday, waiting for reply', value: l.stageNote || '' })),
+    l.stageBy ? h('p', { class: 'meta' }, 'Last updated by ' + l.stageBy + (l.stageAt ? ' on ' + l.stageAt.slice(0, 10) : '')) : null,
+    h('h3', {}, 'Details'),
     h('div', { class: 'field' }, h('label', { for: 'f-email' }, 'Public contact email (only one they publish themselves)'), email),
     h('div', { class: 'field' }, h('label', { for: 'f-country' }, 'Country (2-letter code)'), country),
-    h('div', { class: 'field' }, h('label', { for: 'f-bio' }, 'Bio / description'), bio),
-    h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => act(() => api('/leads/' + l.id, { method: 'PATCH', body: { contactEmail: email.value.trim() || null, country: country.value.trim() || null, bio: bio.value } }), 'Saved') }, 'Save details')));
+    h('div', { class: 'field' }, h('label', { for: 'f-bio' }, 'About'), bio),
+    h('div', { class: 'row' },
+      h('button', { onclick: () => act(() => api('/leads/' + l.id, { method: 'PATCH', body: { contactEmail: email.value.trim() || null, country: country.value.trim() || null, bio: bio.value } }), 'Saved') }, 'Save details'),
+      h('button', { class: 'ghost', onclick: () => { if (confirm('Delete this partner from the list?')) { act(() => api('/leads/' + l.id, { method: 'DELETE' }), 'Deleted').then(closeDetail); } } }, 'Delete')));
 }
-const noteVal = () => ($('f-note') ? $('f-note').value.trim() || undefined : undefined);
 
 const AI_DEFAULTS = ['FOOTBALL_CHANNELS', 'PREDICTION_CREATORS', 'TELEGRAM_CHANNELS', 'YOUTUBE_CHANNELS'];
-function aiCard() {
-  const box = h('div', { class: 'card' }, h('h2', {}, 'Find partners with AI'),
-    h('p', { class: 'muted' }, 'Claude searches the public web for candidates in the categories you pick. Public pages only. Every result is checked against the real search results before it is saved.'));
+
+/** The main button: one click searches the public web with sensible defaults; "Options" lets you steer it. */
+function findCard() {
+  const box = h('div', { class: 'card' });
   const out = h('div', { class: 'meta', style: 'margin-top:8px' });
   const checks = [];
   const country = h('input', { placeholder: 'Target country e.g. KE', maxlength: 2, size: 20 });
   const language = h('input', { placeholder: 'Language e.g. Swahili', maxlength: 40 });
   const focus = h('input', { placeholder: 'Extra focus (optional)', maxlength: 200, style: 'flex:1;min-width:220px' });
   const limit = h('select', { 'aria-label': 'How many' }, [10, 15, 25].map((n) => h('option', { value: n, selected: n === 15 }, 'Up to ' + n)));
-  const go = h('button', { disabled: true }, 'Search the web');
+  const go = h('button', { id: 'find-btn', style: 'font-size:18px;padding:14px 28px' }, 'Find partners');
   const grid = h('div', { class: 'row' }, h('span', { class: 'muted' }, 'Loading categories…'));
-  box.append(grid, h('div', { class: 'row' }, country, language, focus, limit, go), out);
+  box.append(
+    h('div', { class: 'row' }, go, h('span', { class: 'muted' }, 'Searches the public web for football, tipster and betting partners. Takes about 1–3 minutes.')),
+    h('details', {}, h('summary', {}, 'Options'), grid, h('div', { class: 'row' }, country, language, focus, limit)),
+    out);
 
   api('/discovery/ai/segments').then((segs) => {
     grid.replaceChildren(...Object.entries(segs).map(([key, label]) => {
       const cb = h('input', { type: 'checkbox', value: key, id: 'seg-' + key }); cb.checked = AI_DEFAULTS.includes(key); checks.push(cb);
       return h('label', { class: 'pill', for: 'seg-' + key, style: 'cursor:pointer' }, cb, ' ' + label);
     }));
-    go.disabled = false;
   }).catch((e) => { grid.textContent = e.message; });
 
   go.addEventListener('click', async () => {
-    const segments = checks.filter((c) => c.checked).map((c) => c.value);
-    if (!segments.length) return toast('Pick at least one category.', true);
+    // Before the category list has loaded (or if nothing is ticked) fall back to the defaults.
+    let segments = checks.filter((c) => c.checked).map((c) => c.value);
+    if (!segments.length) segments = checks.length ? [] : AI_DEFAULTS;
+    if (!segments.length) return toast('Pick at least one category under Options.', true);
     go.disabled = true; out.textContent = 'Starting…';
+    const startedAt = new Date().toISOString();
     try {
       const { jobId } = await api('/discovery/ai', { method: 'POST', body: { segments, country: country.value.trim() || undefined, language: language.value.trim() || undefined, focus: focus.value.trim() || undefined, limit: Number(limit.value) } });
       const began = Date.now();
-      out.textContent = 'Searching the web… (this usually takes 1–3 minutes)';
       for (;;) {
+        out.textContent = 'Searching the web… ' + Math.round((Date.now() - began) / 1000) + 's (this usually takes 1–3 minutes)';
         await new Promise((r) => setTimeout(r, 3000));
         const job = await api('/discovery/ai/' + jobId);
-        if (job.status === 'running') { out.textContent = 'Searching the web… ' + Math.round((Date.now() - began) / 1000) + 's (this usually takes 1–3 minutes)'; if (Date.now() - began > 12 * 60 * 1000) throw new Error('Taking too long — check back later.'); continue; }
+        if (job.status === 'running') { if (Date.now() - began > 12 * 60 * 1000) throw new Error('Taking too long — check back later.'); continue; }
         if (job.status === 'failed') throw new Error(job.error || 'The search failed.');
         const r = job.result;
-        out.replaceChildren(h('div', {}, 'Done: ' + r.created + ' new leads, ' + r.updated + ' already known. ' + r.verifiedFromSource + ' checked directly at the source. ' + r.rejected.length + ' suggestions rejected.'),
-          h('div', {}, 'Open "To review" and press "Score new leads" to see how they rate.'),
-          r.rejected.length ? h('details', {}, h('summary', {}, 'Why were some rejected?'), h('ul', { class: 'plain' }, r.rejected.map((x) => h('li', {}, x.url + ' — ' + x.reason)))) : null);
-        loadStats(); break;
+        toast('Found ' + r.created + ' new partners.');
+        state.since = startedAt; state.offset = 0; state.filters = {};
+        loadStats(); await renderTab();
+        const note = $('list-pane').querySelector('.find-result');
+        if (note) note.remove();
+        $('list-pane').prepend(h('div', { class: 'card find-result' },
+          h('div', {}, 'Done: ' + r.created + ' new partners, ' + r.updated + ' already known. ' + r.verifiedFromSource + ' checked directly at the source. ' + r.rejected.length + ' suggestions rejected.'),
+          r.rejected.length ? h('details', {}, h('summary', {}, 'Why were some rejected?'), h('ul', { class: 'plain' }, r.rejected.map((x) => h('li', {}, x.url + ' — ' + x.reason)))) : null));
+        return;
       }
-    } catch (e) { out.textContent = e.message; toast(e.message, true); }
-    go.disabled = false;
+    } catch (e) { out.textContent = e.message; toast(e.message, true); go.disabled = false; }
   });
   return box;
 }
@@ -281,7 +249,6 @@ function renderAdd(pane) {
   const guard = async (p, f) => { out.textContent = 'Working…'; try { show(f(await p())); loadStats(); } catch (e) { out.textContent = e.message; toast(e.message, true); } };
 
   pane.replaceChildren(
-    aiCard(),
     h('div', { class: 'card', style: 'margin-top:12px' }, h('h2', {}, 'Search YouTube'), h('p', { class: 'muted' }, 'Finds channels by keyword (needs YOUTUBE_API_KEY on the server).'),
       h('div', { class: 'row' }, yq, yr, h('button', { onclick: () => guard(() => api('/discovery/youtube', { method: 'POST', body: { query: yq.value.trim(), limit: 20, regionCode: yr.value.trim() || undefined } }), (r) => ['Found ' + r.found + ' channels: ' + r.created + ' new, ' + r.updated + ' already known.']) }, 'Search'))),
     h('div', { class: 'card', style: 'margin-top:12px' }, h('h2', {}, 'Paste links'), urls,

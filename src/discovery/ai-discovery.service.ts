@@ -92,7 +92,7 @@ export class AiDiscoveryService {
           if (enriched) verified++;
           else {
             // Nothing on this lead came from the source itself. The model's note is kept, but labelled as
-            // second-hand so the scorer treats it as weak evidence. Followers and emails are never taken from it.
+            // second-hand. Followers and emails are never taken from it.
             raw.displayName = c.name || raw.displayName;
             raw.bio = c.note ? `${UNVERIFIED_PREFIX} ${c.note}` : '';
           }

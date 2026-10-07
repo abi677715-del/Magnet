@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { config } from '../common/config';
-import { escapeUntrusted } from '../classification/llm';
+import { escapeUntrusted } from '../common/untrusted';
 import { AiCandidate, extractCandidates } from './ai-validate';
 
 export const SEGMENTS = {

@@ -17,11 +17,13 @@ enum Platform {
   WEBSITE
 }
 
-enum LeadStatus {
-  NEW       // discovered, not scored yet
-  SCORED    // scored by the AI, waiting for a manager
-  APPROVED  // on the manager's shortlist
-  REJECTED  // manager said no
+// Where a partner is in the team's own outreach. Set by hand; the app never contacts anyone.
+enum PartnerStage {
+  FOUND        // discovered, nobody has reached out yet
+  CONTACTED    // the team has contacted them
+  IN_PROGRESS  // talking / signing up
+  REGISTERED   // signed up as a partner
+  DECLINED     // not interested or not a fit
 }
 
 model Lead {
@@ -36,28 +38,17 @@ model Lead {
   language      String?
   contactEmail  String?
   recentContent Json       @default("[]") // [{ title, text, url, publishedAt }]
-  source        String // youtube-search | url | csv | manual
+  source        String // ai-search | youtube-search | url | csv | json
   discoveredAt  DateTime   @default(now())
 
-  status        LeadStatus @default(NEW)
-  score         Int?
-  category      String?
-  summary       String?
-  breakdown     Json? // sub-scores + weights actually used
-  strengths     String[]   @default([])
-  concerns      String[]   @default([])
-  redFlags      String[]   @default([])
-  isPriority    Boolean    @default(false)
-  scoredAt      DateTime?
-  scoreModel    String?
-  scoreError    String?
-
-  reviewedBy    String?
-  reviewedAt    DateTime?
-  reviewNote    String?
+  stage         PartnerStage @default(FOUND)
+  stageNote     String?
+  stageBy       String?
+  stageAt       DateTime?
 
   @@unique([platform, handle])
-  @@index([status, score])
+  @@index([discoveredAt])
+  @@index([stage])
   @@map("leads")
 }
 

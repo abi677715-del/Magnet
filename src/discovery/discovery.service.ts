@@ -53,12 +53,12 @@ export class DiscoveryService {
       try {
         const { raw, enriched } = await this.readLead(parsed, 'url');
         // TikTok, Instagram, X, Reddit (and anything we couldn't read) can't be read automatically —
-        // save the link so nothing is lost, and the manager can add a bio or import details.
+        // save the link so nothing is lost; details can be added later.
         const note = enriched
           ? undefined
           : parsed.platform === Platform.WEBSITE || parsed.platform === Platform.TELEGRAM
             ? 'Could not read this page (blocked, private or not found) — saved as a bare link.'
-            : 'Saved as a link. This platform cannot be read automatically — add a bio or import details so it can be scored.';
+            : 'Saved as a link. This platform cannot be read automatically — add a bio or import details.';
         const saved = await this.ingest.upsert(raw);
         out.push({ url: input, status: 'saved', leadId: saved.id, note });
       } catch (err) {

@@ -1,4 +1,4 @@
-// Starts the real app with fake Claude/mailer on a fixed port and seeds demo leads, for browser testing.
+// Starts the real app with fake Claude search on a fixed port and seeds demo leads, for browser testing.
 import 'reflect-metadata';
 process.env.ADMIN_API_KEY = 'ui-test-admin-key-0123456789';
 process.env.NODE_ENV = 'test';
@@ -8,17 +8,10 @@ import helmet from 'helmet';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from '../src/app.module';
-import { CLASSIFIER_LLM } from '../src/classification/classification.service';
-import { FakeLlm, FakeDiscoverer } from './helpers';
+import { FakeDiscoverer } from './helpers';
 import { AI_DISCOVERER } from '../src/discovery/ai-discovery';
 
 (async () => {
-  const llm = new FakeLlm();
-  llm.byHandle = {
-    kidscorner: { red_flags: ['AUDIENCE_INCLUDES_MINORS'], concerns: ['Videos are made for children'] },
-    sureodds: { red_flags: ['GUARANTEED_WINS_CLAIMS'], concerns: ['Promises "100% sure wins"'] },
-    smalltips: { audience_relevance: 45, content_fit: 50, credibility: 55, promo_experience: 10, strengths: [] },
-  };
   const disc = new FakeDiscoverer();
   disc.delayMs = 1500;
   disc.result = { searches: 6, seenUrls: ['https://t.me/s/uitelegramtips', 'https://x.com/uixtipster'], candidates: [
@@ -27,7 +20,7 @@ import { AI_DISCOVERER } from '../src/discovery/ai-discovery';
     { url: 'https://x.com/notinresults', name: 'Invented', note: 'Not real' },
   ] };
   const m = await Test.createTestingModule({ imports: [AppModule] })
-    .overrideProvider(CLASSIFIER_LLM).useValue(llm).overrideProvider(AI_DISCOVERER).useValue(disc).compile();
+    .overrideProvider(AI_DISCOVERER).useValue(disc).compile();
   const app = m.createNestApplication<NestExpressApplication>();
   app.use(helmet());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
@@ -43,6 +36,5 @@ import { AI_DISCOVERER } from '../src/discovery/ai-discovery';
     { platform: 'instagram', handle: 'smalltips', name: 'Small Tips', followers: 800, country: 'ET', bio },
     { platform: 'tiktok', handle: 'barelink', name: 'Bare Link' },
   ] });
-  await api('/classification/run', {});
   console.log('READY');
 })();

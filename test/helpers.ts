@@ -3,28 +3,9 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import { AppModule } from '../src/app.module';
-import { CLASSIFIER_LLM } from '../src/classification/classification.service';
-import { ModelAssessment } from '../src/classification/llm';
 import { AI_DISCOVERER, AiSearchRequest, AiSearchResult } from '../src/discovery/ai-discovery';
 
 export const KEY = 'e2e-admin-key-0123456789abcdef';
-
-export const GOOD: ModelAssessment = {
-  category: 'SPORTS_CONTENT_CREATOR', audience_relevance: 90, content_fit: 90, credibility: 90, promo_experience: 80,
-  country_guess: 'KE', language: 'English', strengths: ['Weekly football previews'], concerns: [], red_flags: [], summary: 'A strong fit.',
-};
-
-export class FakeLlm {
-  modelName = 'fake-model';
-  calls: string[] = [];
-  byHandle: Record<string, Partial<ModelAssessment> | 'throw'> = {};
-  async assess(lead: { handle: string }) {
-    this.calls.push(lead.handle);
-    const o = this.byHandle[lead.handle];
-    if (o === 'throw') throw new Error('upstream exploded');
-    return { ...GOOD, ...(o ?? {}) } as ModelAssessment;
-  }
-}
 
 export class FakeDiscoverer {
   modelName = 'fake-discoverer';
@@ -41,10 +22,8 @@ export class FakeDiscoverer {
 }
 
 export async function boot() {
-  const llm = new FakeLlm();
   const discoverer = new FakeDiscoverer();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-    .overrideProvider(CLASSIFIER_LLM).useValue(llm)
     .overrideProvider(AI_DISCOVERER).useValue(discoverer)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
@@ -71,10 +50,9 @@ export async function boot() {
 
   async function reset() {
     await db.$executeRawUnsafe('TRUNCATE leads, audit_log CASCADE');
-    llm.calls = []; llm.byHandle = {};
     discoverer.requests = []; discoverer.result = { candidates: [], seenUrls: [], searches: 3 }; discoverer.delayMs = 0; discoverer.fail = null;
   }
-  return { app, api, db, llm, discoverer, reset, close: async () => { await db.$disconnect(); await app.close(); } };
+  return { app, api, db, discoverer, reset, close: async () => { await db.$disconnect(); await app.close(); } };
 }
 
 export const importLeads = (api: Awaited<ReturnType<typeof boot>>['api'], rows: Record<string, unknown>[]) =>

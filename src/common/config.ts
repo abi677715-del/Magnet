@@ -23,24 +23,8 @@ export const config = {
     process.env.IDEAL_AFFILIATE_PROFILE ??
     'Sports, football and betting content creators, tipster channels (honest, with a visible track record), streamers, comparison and review websites, and sports communities whose audience is adult and already interested in betting.',
 
-  // Markets the programme can actively recruit in. Empty = no country filter.
-  allowedCountries: list('ALLOWED_COUNTRIES', '').map((c) => c.toUpperCase()),
-
-  priorityThreshold: num('PRIORITY_THRESHOLD', 70),
-
-  // How much each part of the score counts. Normalised in code, so they don't have to add to 100.
-  weights: {
-    audienceRelevance: num('WEIGHT_AUDIENCE', 30),
-    contentFit: num('WEIGHT_CONTENT', 20),
-    credibility: num('WEIGHT_CREDIBILITY', 20),
-    promoExperience: num('WEIGHT_PROMO', 10),
-    reach: num('WEIGHT_REACH', 20),
-  },
-
-  // Models. Both default to the most capable Claude model; set cheaper ones here if volume grows.
-  classifierModel: process.env.CLASSIFIER_MODEL ?? 'claude-opus-5-5',
+  // Model used for the web search. Defaults to the most capable Claude model; set a cheaper one here if volume grows.
   discoveryModel: process.env.DISCOVERY_MODEL ?? 'claude-opus-5-5',
   aiDiscoveryDailyLimit: num('AI_DISCOVERY_DAILY_LIMIT', 20),
   aiDiscoveryMaxSearches: num('AI_DISCOVERY_MAX_SEARCHES', 10),
-  classifierConcurrency: num('CLASSIFIER_CONCURRENCY', 3),
 };
