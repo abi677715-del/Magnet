@@ -36,11 +36,11 @@ function toast(msg, isErr) {
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
     method,
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + store.get('key'), 'x-actor': store.get('actor') || 'manager' },
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + store.get('key') },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) { signOut(); throw new Error('Signed out — check the access key.'); }
+  if (res.status === 401 && path !== '/auth/login') { signOut(); throw new Error('Please sign in again.'); }
   if (!res.ok) throw new Error(Array.isArray(data.message) ? data.message.join('; ') : data.message || 'Request failed (' + res.status + ')');
   return data;
 }
@@ -60,26 +60,124 @@ const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'FACEBOOK', 'REDDIT', 
 
 // Built once so a running search keeps showing its progress when the list below refreshes.
 const cards = {};
-const state = { filters: {}, selected: null, offset: 0, since: '' };
+const state = { filters: {}, selected: null, offset: 0, since: '', view: 'partners', me: null };
 
-function signOut() { for (const k of Object.keys(cards)) delete cards[k]; store.del('key'); $('app').hidden = true; $('foot').hidden = true; $('login').hidden = false; $('logout').hidden = true; $('stats').replaceChildren(); }
+function signOut(message) {
+  for (const k of Object.keys(cards)) delete cards[k];
+  store.del('key'); state.me = null; state.view = 'partners';
+  for (const id of ['app', 'foot', 'nav', 'logout', 'nav-admin']) $(id).hidden = true;
+  $('login').hidden = false; $('whoami').textContent = ''; $('stats').replaceChildren(); closeDetail();
+  if (typeof message === 'string') $('login-error').textContent = message;
+}
+
+async function logout() { try { await api('/auth/logout', { method: 'POST' }); } catch { /* already signed out */ } signOut(); }
+
+function showAuthTab(which) {
+  const signin = which === 'signin';
+  $('login-form').hidden = !signin; $('register-form').hidden = signin;
+  $('tab-signin').classList.toggle('on', signin); $('tab-register').classList.toggle('on', !signin);
+  $('login-error').textContent = ''; $('login-info').textContent = '';
+}
+
+async function openWith(token) {
+  store.set('key', token);
+  try { state.me = await api('/auth/me'); } catch (err) { store.del('key'); throw err; }
+  showApp();
+}
 
 async function start() {
-  $('actor').value = store.get('actor');
-  $('actor').addEventListener('change', () => store.set('actor', $('actor').value.trim()));
-  $('logout').addEventListener('click', signOut);
+  $('logout').addEventListener('click', logout);
+  $('tab-signin').addEventListener('click', () => showAuthTab('signin'));
+  $('tab-register').addEventListener('click', () => showAuthTab('register'));
+  $('nav-partners').addEventListener('click', () => setView('partners'));
+  $('nav-admin').addEventListener('click', () => setView('admin'));
+
   $('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    store.set('key', $('key').value); $('key').value = '';
-    try { await api('/leads/stats'); $('login-error').textContent = ''; showApp(); } catch (err) { $('login-error').textContent = err.message; signOut(); }
+    e.preventDefault(); $('login-error').textContent = ''; $('login-info').textContent = '';
+    try {
+      const r = await api('/auth/login', { method: 'POST', body: { email: $('login-email').value, password: $('login-password').value } });
+      $('login-password').value = '';
+      await openWith(r.token);
+    } catch (err) { $('login-error').textContent = err.message; }
   });
-  if (store.get('key')) { try { await api('/leads/stats'); return showApp(); } catch { /* fall through to login */ } }
+  $('key-signin').addEventListener('click', async () => {
+    $('login-error').textContent = '';
+    try { await openWith($('key').value); $('key').value = ''; } catch (err) { $('login-error').textContent = 'That admin key was not accepted.'; }
+  });
+  $('register-form').addEventListener('submit', async (e) => {
+    e.preventDefault(); $('login-error').textContent = ''; $('login-info').textContent = '';
+    if ($('reg-password').value !== $('reg-password2').value) { $('login-error').textContent = 'The two passwords are not the same.'; return; }
+    try {
+      const r = await api('/auth/register', { method: 'POST', body: { name: $('reg-name').value.trim(), email: $('reg-email').value.trim(), password: $('reg-password').value } });
+      $('register-form').reset();
+      showAuthTab('signin');
+      $('login-info').textContent = r.message;
+    } catch (err) { $('login-error').textContent = err.message; }
+  });
+
+  if (store.get('key')) { try { state.me = await api('/auth/me'); return showApp(); } catch { /* fall through to sign in */ } }
   signOut();
 }
 
 function showApp() {
-  $('login').hidden = true; $('app').hidden = false; $('foot').hidden = false; $('logout').hidden = false;
-  loadStats(); renderTab();
+  const isAdmin = state.me && state.me.role === 'ADMIN';
+  $('login').hidden = true; $('app').hidden = false; $('foot').hidden = false; $('logout').hidden = false; $('nav').hidden = false;
+  $('nav-admin').hidden = !isAdmin;
+  $('whoami').textContent = state.me ? state.me.name + (isAdmin ? ' · admin' : '') : '';
+  setView('partners');
+  loadStats(); if (isAdmin) refreshPending();
+}
+
+function setView(view) {
+  state.view = view;
+  $('view-partners').hidden = view !== 'partners'; $('view-admin').hidden = view !== 'admin';
+  $('nav-partners').classList.toggle('on', view === 'partners'); $('nav-admin').classList.toggle('on', view === 'admin');
+  $('foot').hidden = view !== 'partners';
+  if (view === 'admin') renderAdmin(); else renderTab();
+}
+
+async function refreshPending() {
+  try {
+    const pending = await api('/admin/users?status=PENDING');
+    $('pending-badge').textContent = pending.length; $('pending-badge').hidden = !pending.length;
+  } catch { /* badge is a nicety */ }
+}
+
+const STATUS_PILL = { PENDING: ['Waiting', 'warn'], APPROVED: ['Approved', 'good'], REJECTED: ['Declined', 'bad'], DISABLED: ['Switched off', 'bad'] };
+const dateOnly = (d) => (d ? String(d).slice(0, 10) : '—');
+
+/** Admin page: confirm registrations and manage the team. */
+async function renderAdmin() {
+  const pane = $('view-admin');
+  pane.replaceChildren(h('p', { class: 'muted' }, 'Loading…'));
+  try {
+    const users = await api('/admin/users');
+    const run = (fn, ok) => async () => { try { await fn(); toast(ok); renderAdmin(); refreshPending(); } catch (e) { toast(e.message, true); } };
+    const post = (u, action, body) => api('/admin/users/' + u.id + '/' + action, { method: 'POST', body });
+    const row = (u) => {
+      const [label, cls] = STATUS_PILL[u.status] || [u.status, ''];
+      const mine = state.me && state.me.email && state.me.email === u.email;
+      const acts = [];
+      if (u.status === 'PENDING') acts.push(h('button', { class: 'good', onclick: run(() => post(u, 'approve'), u.name + ' approved') }, 'Approve'), h('button', { class: 'ghost', onclick: run(() => post(u, 'reject'), u.name + ' declined') }, 'Reject'));
+      if (u.status === 'REJECTED' || u.status === 'DISABLED') acts.push(h('button', { class: 'good', onclick: run(() => post(u, 'approve'), u.name + ' approved') }, 'Approve again'));
+      if (u.status === 'APPROVED' && !mine) {
+        acts.push(u.role === 'ADMIN'
+          ? h('button', { class: 'ghost', onclick: run(() => post(u, 'remove-admin'), 'Admin rights removed') }, 'Remove admin')
+          : h('button', { class: 'ghost', onclick: run(() => post(u, 'make-admin'), u.name + ' is now an admin') }, 'Make admin'));
+        acts.push(h('button', { class: 'ghost', onclick: () => { const pw = prompt('New password for ' + u.name + ' (at least 8 characters). They will be signed out.'); if (pw) run(() => post(u, 'reset-password', { password: pw }), 'Password changed')(); } }, 'Reset password'),
+          h('button', { class: 'ghost', onclick: () => { if (confirm('Switch off ' + u.name + '? They are signed out right away.')) run(() => post(u, 'disable'), u.name + ' switched off')(); } }, 'Switch off'));
+      }
+      return h('div', { class: 'card user' },
+        h('div', {}, h('div', { class: 'name' }, u.name, ' ', h('span', { class: 'pill ' + cls }, label), u.role === 'ADMIN' ? h('span', { class: 'pill good' }, 'Admin') : null, mine ? h('span', { class: 'pill' }, 'You') : null),
+          h('div', { class: 'meta' }, u.email + ' · registered ' + dateOnly(u.createdAt) + (u.decidedBy ? ' · decided by ' + u.decidedBy + ' on ' + dateOnly(u.decidedAt) : '') + (u.lastLoginAt ? ' · last sign-in ' + dateOnly(u.lastLoginAt) : ''))),
+        h('div', { class: 'actions' }, acts));
+    };
+    const group = (title, list, empty) => [h('h2', {}, title + ' (' + list.length + ')'), ...(list.length ? list.map(row) : [h('p', { class: 'muted' }, empty)])];
+    pane.replaceChildren(
+      ...group('Waiting for approval', users.filter((u) => u.status === 'PENDING'), 'No one is waiting.'),
+      ...group('Team', users.filter((u) => u.status === 'APPROVED'), 'No approved members yet.'),
+      ...group('Declined or switched off', users.filter((u) => u.status === 'REJECTED' || u.status === 'DISABLED'), 'None.'));
+  } catch (err) { pane.replaceChildren(h('p', { class: 'error' }, err.message)); }
 }
 
 async function loadStats() {

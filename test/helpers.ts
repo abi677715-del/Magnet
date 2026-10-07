@@ -50,7 +50,7 @@ export async function boot() {
   }
 
   async function reset() {
-    await db.$executeRawUnsafe('TRUNCATE leads, audit_log CASCADE');
+    await db.$executeRawUnsafe('TRUNCATE leads, audit_log, users, sessions CASCADE');
     discoverer.requests = []; discoverer.result = { candidates: [], seenUrls: [], searches: 3 }; discoverer.delayMs = 0; discoverer.fail = null;
   }
   return { app, api, db, discoverer, reset, close: async () => { await db.$disconnect(); await app.close(); } };

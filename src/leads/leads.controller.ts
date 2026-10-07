@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { PartnerStage, Platform } from '@prisma/client';
 import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
-import { ApiKeyGuard } from '../common/api-key.guard';
+import { AuthGuard } from '../common/auth.guard';
 import { LeadsService } from './leads.service';
 
 class EnrichDto {
@@ -17,7 +17,7 @@ class StageDto {
 }
 
 @Controller()
-@UseGuards(ApiKeyGuard)
+@UseGuards(AuthGuard)
 export class LeadsController {
   constructor(private leads: LeadsService) {}
 

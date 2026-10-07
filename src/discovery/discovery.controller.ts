@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
-import { ApiKeyGuard } from '../common/api-key.guard';
+import { AuthGuard } from '../common/auth.guard';
 import { AuditService } from '../common/audit.service';
 import { DiscoveryService } from './discovery.service';
 import { AiDiscoveryService } from './ai-discovery.service';
@@ -16,7 +16,7 @@ class AiSearchDto {
   @IsOptional() @IsInt() @Min(3) @Max(25) limit?: number;
 }
 @Controller('discovery')
-@UseGuards(ApiKeyGuard)
+@UseGuards(AuthGuard)
 @Throttle({ default: { limit: 20, ttl: 60_000 } })
 export class DiscoveryController {
   constructor(

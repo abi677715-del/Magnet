@@ -64,3 +64,45 @@ model AuditLog {
   @@index([leadId])
   @@map("audit_log")
 }
+
+// People on the team. They register, then an admin approves them; only approved users can sign in.
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  PENDING   // registered, waiting for an admin
+  APPROVED  // can sign in
+  REJECTED  // admin said no
+  DISABLED  // was approved, now switched off
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique // stored lower-case
+  name         String
+  passwordHash String // scrypt, never the password itself
+  role         UserRole   @default(USER)
+  status       UserStatus @default(PENDING)
+  createdAt    DateTime   @default(now())
+  decidedBy    String?
+  decidedAt    DateTime?
+  lastLoginAt  DateTime?
+  sessions     Session[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique // sha256 of the token; the token itself is never stored
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@map("sessions")
+}
