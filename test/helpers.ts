@@ -3,6 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import { PrismaClient } from '@prisma/client';
 import { AppModule } from '../src/app.module';
+import { IngestService } from '../src/discovery/ingest.service';
 import { AI_DISCOVERER, AiSearchRequest, AiSearchResult } from '../src/discovery/ai-discovery';
 
 export const KEY = 'e2e-admin-key-0123456789abcdef';
@@ -55,5 +56,11 @@ export async function boot() {
   return { app, api, db, discoverer, reset, close: async () => { await db.$disconnect(); await app.close(); } };
 }
 
-export const importLeads = (api: Awaited<ReturnType<typeof boot>>['api'], rows: Record<string, unknown>[]) =>
-  api('/discovery/import', { method: 'POST', body: { format: 'json', data: rows } });
+/** Puts leads in the way a discovery would. There is no import endpoint any more. */
+export async function importLeads(c: { app: { get: (t: any) => any } }, rows: Record<string, any>[]) {
+  const ingest: IngestService = c.app.get(IngestService);
+  return ingest.upsertMany(rows.map((r) => ({
+    platform: String(r.platform).toUpperCase() as any, handle: r.handle, url: r.url ?? `https://example.com/${r.handle}`, displayName: r.name ?? r.handle,
+    bio: r.bio, followers: r.followers, country: r.country, contactEmail: r.email, source: 'test',
+  })));
+}

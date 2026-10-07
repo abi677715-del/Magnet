@@ -1,5 +1,4 @@
 import { Platform } from '@prisma/client';
-import { leadsFromCsv, parseCsv } from './csv';
 import { findEmails, metaContent, pageTitle, stripTags } from './html';
 import { isAllowedByRobots } from './robots';
 import { parseLeadUrl } from './url-parser';
@@ -12,6 +11,7 @@ describe('parseLeadUrl', () => {
     ['youtube.com/channel/UCabcdefghijklmnopqrstuv', Platform.YOUTUBE, 'UCabcdefghijklmnopqrstuv'],
     ['https://www.tiktok.com/@BetGuru?lang=en', Platform.TIKTOK, 'betguru'],
     ['https://instagram.com/Some.Tipster/', Platform.INSTAGRAM, 'some.tipster'],
+    ['https://www.facebook.com/FootballTipsKE/', Platform.FACEBOOK, 'footballtipske'],
     ['https://twitter.com/BetTips', Platform.X, 'bettips'],
     ['https://x.com/BetTips/status/123', Platform.X, 'bettips'],
     ['https://t.me/s/footballchannel', Platform.TELEGRAM, 'footballchannel'],
@@ -23,36 +23,10 @@ describe('parseLeadUrl', () => {
   it.each(cases)('%s', (url, platform, handle) => {
     expect(parseLeadUrl(url)).toMatchObject({ platform, handle });
   });
-  it.each(['', 'not a url', 'https://youtube.com/watch?v=abc', 'https://t.me/+AbCdEf', 'https://instagram.com/p/abc', 'javascript:alert(1)', 'ftp://x.com/a'])(
+  it.each(['', 'not a url', 'https://youtube.com/watch?v=abc', 'https://t.me/+AbCdEf', 'https://instagram.com/p/abc', 'https://facebook.com/groups/123', 'https://facebook.com/profile.php?id=1', 'javascript:alert(1)', 'ftp://x.com/a'])(
     'rejects %j',
     (u) => expect(parseLeadUrl(u)).toBeNull(),
   );
-});
-
-describe('CSV import', () => {
-  it('parses quotes, commas, newlines in fields and a BOM', () => {
-    expect(parseCsv('﻿a,b\n"x, y","he said ""hi""\nthere"\n')).toEqual([['a', 'b'], ['x, y', 'he said "hi"\nthere']]);
-  });
-  it('turns rows into leads, accepting common header names', () => {
-    const { leads, errors } = leadsFromCsv(
-      'Channel,Network,Username,Subscribers,Country,Email,About\n' +
-        '"Tips FC",TikTok,@TipsFC,"12,500",ke,Tips@Example.com,"Football picks"\n',
-    );
-    expect(errors).toEqual([]);
-    expect(leads[0]).toMatchObject({ platform: 'TIKTOK', handle: 'tipsfc', followers: 12500, country: 'KE', contactEmail: 'tips@example.com', bio: 'Football picks', displayName: 'Tips FC' });
-  });
-  it('can infer platform and handle from a profile URL', () => {
-    const { leads } = leadsFromCsv('url,name\nhttps://instagram.com/foo,Foo\n');
-    expect(leads[0]).toMatchObject({ platform: 'INSTAGRAM', handle: 'foo' });
-  });
-  it('reports bad rows by row number without dropping good ones', () => {
-    const { leads, errors } = leadsFromCsv('platform,handle,followers,email\nmyspace,a,1,\ntiktok,b,abc,\ntiktok,c,5,not-an-email\ntiktok,d,7,\n');
-    expect(leads.map((l) => l.handle)).toEqual(['d']);
-    expect(errors.map((e) => e.row)).toEqual([2, 3, 4]);
-  });
-  it('rejects a file with no data', () => {
-    expect(leadsFromCsv('platform,handle\n').errors).toHaveLength(1);
-  });
 });
 
 describe('html helpers', () => {

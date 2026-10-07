@@ -45,18 +45,16 @@ async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-const TABS = [
-  { id: 'partners', label: 'Partners' },
-  { id: 'add', label: 'Add leads' },
-];
 const STAGES = [['FOUND', 'Found'], ['CONTACTED', 'Contacted'], ['IN_PROGRESS', 'In progress'], ['REGISTERED', 'Registered'], ['DECLINED', 'Declined']];
 const STAGE_LABEL = Object.fromEntries(STAGES);
 const STAGE_CLASS = { FOUND: '', CONTACTED: 'warn', IN_PROGRESS: 'warn', REGISTERED: 'good', DECLINED: 'bad' };
-const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'REDDIT', 'TELEGRAM', 'WEBSITE'];
+const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'FACEBOOK', 'REDDIT', 'TELEGRAM', 'WEBSITE'];
 
-const state = { tab: 'partners', filters: {}, selected: null, offset: 0, since: '' };
+// Built once so a running search keeps showing its progress when the list below refreshes.
+const cards = {};
+const state = { filters: {}, selected: null, offset: 0, since: '' };
 
-function signOut() { store.del('key'); $('app').hidden = true; $('login').hidden = false; $('logout').hidden = true; $('stats').replaceChildren(); }
+function signOut() { for (const k of Object.keys(cards)) delete cards[k]; store.del('key'); $('app').hidden = true; $('login').hidden = false; $('logout').hidden = true; $('stats').replaceChildren(); }
 
 async function start() {
   $('actor').value = store.get('actor');
@@ -73,7 +71,7 @@ async function start() {
 
 function showApp() {
   $('login').hidden = true; $('app').hidden = false; $('logout').hidden = false;
-  renderTabs(); loadStats(); renderTab();
+  loadStats(); renderTab();
 }
 
 async function loadStats() {
@@ -84,22 +82,17 @@ async function loadStats() {
   } catch { /* stats are a nicety */ }
 }
 
-function renderTabs() {
-  $('tabs').replaceChildren(...TABS.map((t) => h('button', { class: state.tab === t.id ? 'on' : '', onclick: () => { state.tab = t.id; state.offset = 0; closeDetail(); renderTabs(); renderTab(); } }, t.label)));
-}
-
 function closeDetail() { $('detail-pane').hidden = true; document.querySelector('.layout').classList.remove('has-detail'); state.selected = null; }
 
 async function renderTab() {
   const pane = $('list-pane');
-  if (state.tab === 'add') return renderAdd(pane);
   pane.replaceChildren(h('p', { class: 'muted' }, 'Loading…'));
   const q = new URLSearchParams({ ...state.filters, ...(state.since ? { since: state.since } : {}), limit: '25', offset: String(state.offset) });
   try {
     const { items, total } = await api('/leads?' + q);
-    const parts = [findCard(), filterBar()];
-    parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', disabled: !total, onclick: () => exportCsv(q) }, 'Export to CSV (' + total + ')'),
-      state.since ? h('button', { class: 'ghost', onclick: () => { state.since = ''; state.offset = 0; renderTab(); } }, 'Show all partners') : null));
+    cards.find ||= findCard(); cards.links ||= linksCard();
+    const parts = [cards.find, cards.links, filterBar()];
+    if (state.since) parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => { state.since = ''; state.offset = 0; renderTab(); } }, 'Show all partners')));
     if (!items.length) parts.push(h('p', { class: 'muted' }, 'Nothing here yet. Press "Find partners" to start.'));
     parts.push(...items.map(leadCard));
     parts.push(h('div', { class: 'row' },
@@ -108,18 +101,6 @@ async function renderTab() {
       h('button', { class: 'ghost', disabled: state.offset + 25 >= total, onclick: () => { state.offset += 25; renderTab(); } }, 'Next')));
     pane.replaceChildren(...parts);
   } catch (err) { pane.replaceChildren(h('p', { class: 'error' }, err.message)); }
-}
-
-async function exportCsv(q) {
-  try {
-    const params = new URLSearchParams(q); params.delete('limit'); params.delete('offset');
-    const res = await fetch('/leads/export?' + params, { headers: { Authorization: 'Bearer ' + store.get('key') } });
-    if (!res.ok) throw new Error('Export failed (' + res.status + ')');
-    const url = URL.createObjectURL(await res.blob());
-    const a = h('a', { href: url, download: 'partner-leads.csv' }); document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('Downloaded partner-leads.csv');
-  } catch (e) { toast(e.message, true); }
 }
 
 function filterBar() {
@@ -180,40 +161,26 @@ function detail(l) {
       h('button', { class: 'ghost', onclick: () => { if (confirm('Delete this partner from the list?')) { act(() => api('/leads/' + l.id, { method: 'DELETE' }), 'Deleted').then(closeDetail); } } }, 'Delete')));
 }
 
-const AI_DEFAULTS = ['FOOTBALL_CHANNELS', 'PREDICTION_CREATORS', 'TELEGRAM_CHANNELS', 'YOUTUBE_CHANNELS'];
-
 /** The main button: one click searches the public web with sensible defaults; "Options" lets you steer it. */
 function findCard() {
   const box = h('div', { class: 'card' });
   const out = h('div', { class: 'meta', style: 'margin-top:8px' });
-  const checks = [];
   const country = h('input', { placeholder: 'Target country e.g. KE', maxlength: 2, size: 20 });
   const language = h('input', { placeholder: 'Language e.g. Swahili', maxlength: 40 });
   const focus = h('input', { placeholder: 'Extra focus (optional)', maxlength: 200, style: 'flex:1;min-width:220px' });
   const limit = h('select', { 'aria-label': 'How many' }, [10, 15, 25].map((n) => h('option', { value: n, selected: n === 15 }, 'Up to ' + n)));
   const go = h('button', { id: 'find-btn', style: 'font-size:18px;padding:14px 28px' }, 'Find partners');
-  const grid = h('div', { class: 'row' }, h('span', { class: 'muted' }, 'Loading categories…'));
   box.append(
-    h('div', { class: 'row' }, go, h('span', { class: 'muted' }, 'Searches the public web for football, tipster and betting partners. Takes about 1–3 minutes.')),
-    h('details', {}, h('summary', {}, 'Options'), grid, h('div', { class: 'row' }, country, language, focus, limit)),
+    h('div', { class: 'row' }, go, h('span', { class: 'muted' }, 'Searches everywhere that is public: YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit and websites. Takes about 1–3 minutes.')),
+    h('details', {}, h('summary', {}, 'Narrow the search (optional)'), h('div', { class: 'row' }, country, language, focus, limit)),
+    h('p', { class: 'meta' }, 'Only public pages are used. Private groups, closed channels and anything behind a login cannot be searched.'),
     out);
 
-  api('/discovery/ai/segments').then((segs) => {
-    grid.replaceChildren(...Object.entries(segs).map(([key, label]) => {
-      const cb = h('input', { type: 'checkbox', value: key, id: 'seg-' + key }); cb.checked = AI_DEFAULTS.includes(key); checks.push(cb);
-      return h('label', { class: 'pill', for: 'seg-' + key, style: 'cursor:pointer' }, cb, ' ' + label);
-    }));
-  }).catch((e) => { grid.textContent = e.message; });
-
   go.addEventListener('click', async () => {
-    // Before the category list has loaded (or if nothing is ticked) fall back to the defaults.
-    let segments = checks.filter((c) => c.checked).map((c) => c.value);
-    if (!segments.length) segments = checks.length ? [] : AI_DEFAULTS;
-    if (!segments.length) return toast('Pick at least one category under Options.', true);
     go.disabled = true; out.textContent = 'Starting…';
     const startedAt = new Date().toISOString();
     try {
-      const { jobId } = await api('/discovery/ai', { method: 'POST', body: { segments, country: country.value.trim() || undefined, language: language.value.trim() || undefined, focus: focus.value.trim() || undefined, limit: Number(limit.value) } });
+      const { jobId } = await api('/discovery/ai', { method: 'POST', body: { country: country.value.trim() || undefined, language: language.value.trim() || undefined, focus: focus.value.trim() || undefined, limit: Number(limit.value) } });
       const began = Date.now();
       for (;;) {
         out.textContent = 'Searching the web… ' + Math.round((Date.now() - began) / 1000) + 's (this usually takes 1–3 minutes)';
@@ -223,10 +190,9 @@ function findCard() {
         if (job.status === 'failed') throw new Error(job.error || 'The search failed.');
         const r = job.result;
         toast('Found ' + r.created + ' new partners.');
-        state.since = startedAt; state.offset = 0; state.filters = {};
+        out.textContent = ''; go.disabled = false;
+        state.since = r.created ? startedAt : ''; state.offset = 0; state.filters = {};
         loadStats(); await renderTab();
-        const note = $('list-pane').querySelector('.find-result');
-        if (note) note.remove();
         $('list-pane').prepend(h('div', { class: 'card find-result' },
           h('div', {}, 'Done: ' + r.created + ' new partners, ' + r.updated + ' already known. ' + r.verifiedFromSource + ' checked directly at the source. ' + r.rejected.length + ' suggestions rejected.'),
           r.rejected.length ? h('details', {}, h('summary', {}, 'Why were some rejected?'), h('ul', { class: 'plain' }, r.rejected.map((x) => h('li', {}, x.url + ' — ' + x.reason)))) : null));
@@ -237,25 +203,19 @@ function findCard() {
   return box;
 }
 
-function renderAdd(pane) {
-  closeDetail();
+/** Adding a partner you found yourself: paste one or more links. */
+function linksCard() {
   const out = h('div', { class: 'meta' });
-  const yq = h('input', { placeholder: 'e.g. football betting tips', maxlength: 120, style: 'flex:1;min-width:200px' });
-  const yr = h('input', { placeholder: 'Region e.g. KE', maxlength: 2, size: 6 });
-  const urls = h('textarea', { placeholder: 'Paste links, one per line: YouTube channels, Telegram channels, websites, or TikTok / Instagram / X profiles' });
-  const csv = h('textarea', { placeholder: 'platform,handle,name,followers,country,email,bio\nyoutube,@footballtips,Football Tips,52000,KE,hello@example.com,"Weekly picks"' });
-  const file = h('input', { type: 'file', accept: '.csv,text/csv', onchange: async (e) => { const f = e.target.files[0]; if (f) csv.value = await f.text(); } });
-  const show = (lines) => out.replaceChildren(...lines.map((t) => h('div', {}, t)));
-  const guard = async (p, f) => { out.textContent = 'Working…'; try { show(f(await p())); loadStats(); } catch (e) { out.textContent = e.message; toast(e.message, true); } };
-
-  pane.replaceChildren(
-    h('div', { class: 'card', style: 'margin-top:12px' }, h('h2', {}, 'Search YouTube'), h('p', { class: 'muted' }, 'Finds channels by keyword (needs YOUTUBE_API_KEY on the server).'),
-      h('div', { class: 'row' }, yq, yr, h('button', { onclick: () => guard(() => api('/discovery/youtube', { method: 'POST', body: { query: yq.value.trim(), limit: 20, regionCode: yr.value.trim() || undefined } }), (r) => ['Found ' + r.found + ' channels: ' + r.created + ' new, ' + r.updated + ' already known.']) }, 'Search'))),
-    h('div', { class: 'card', style: 'margin-top:12px' }, h('h2', {}, 'Paste links'), urls,
-      h('div', { class: 'row' }, h('button', { onclick: () => guard(() => api('/discovery/urls', { method: 'POST', body: { urls: urls.value.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean) } }), (r) => r.results.map((x) => (x.status === 'saved' ? '✓ ' : '✗ ') + x.url + (x.note ? ' — ' + x.note : ''))) }, 'Add links'))),
-    h('div', { class: 'card', style: 'margin-top:12px' }, h('h2', {}, 'Import a spreadsheet (CSV)'), h('p', { class: 'muted' }, 'Use this for TikTok, Instagram and X, which cannot be read automatically. Columns: platform, handle, name, followers, country, email, bio, url.'),
-      file, csv, h('div', { class: 'row' }, h('button', { onclick: () => guard(() => api('/discovery/import', { method: 'POST', body: { format: 'csv', data: csv.value } }), (r) => ['Imported: ' + r.created + ' new, ' + r.updated + ' updated.', ...r.errors.map((e) => 'Row ' + e.row + ': ' + e.message)]) }, 'Import'))),
-    h('div', { class: 'card', style: 'margin-top:12px' }, out));
+  const urls = h('textarea', { placeholder: 'Paste links, one per line: YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit or a website' });
+  const add = h('button', { class: 'ghost', onclick: async () => {
+    out.textContent = 'Working…';
+    try {
+      const r = await api('/discovery/urls', { method: 'POST', body: { urls: urls.value.split(/\s*\n\s*/).map((x) => x.trim()).filter(Boolean) } });
+      out.replaceChildren(...r.results.map((x) => h('div', {}, (x.status === 'saved' ? '✓ ' : '✗ ') + x.url + (x.note ? ' — ' + x.note : ''))));
+      urls.value = ''; loadStats();
+    } catch (e) { out.textContent = e.message; toast(e.message, true); }
+  } }, 'Add links');
+  return h('details', { class: 'card' }, h('summary', {}, 'Add partners by link'), urls, h('div', { class: 'row' }, add), out);
 }
 
 start();

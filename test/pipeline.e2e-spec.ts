@@ -13,14 +13,15 @@ const lead = async (handle: string) => c.db.lead.findFirstOrThrow({ where: { han
 
 describe('auth', () => {
   it('refuses missing and wrong keys on every protected route', async () => {
-    for (const [method, path] of [['GET', '/leads'], ['GET', '/leads/stats'], ['POST', '/discovery/import'], ['GET', '/leads/export'], ['POST', '/discovery/ai']]) {
+    for (const [method, path] of [['GET', '/leads'], ['GET', '/leads/stats'], ['POST', '/discovery/urls'], ['POST', '/discovery/ai']]) {
       expect((await c.api(path, { method, key: null })).status).toBe(401);
       expect((await c.api(path, { method, key: 'wrong-key-wrong-key-wrong' })).status).toBe(401);
     }
   });
-  it('keeps only the health check public, and has no scoring, review or email-sending endpoints at all', async () => {
+  it('keeps only the health check public, and has no scoring, review, CSV, YouTube-search or email-sending endpoints at all', async () => {
     expect((await c.api('/health', { key: null })).status).toBe(200);
-    for (const path of ['/unsubscribe/x', '/outreach/x', '/classification/run', '/leads/00000000-0000-4000-8000-000000000000/approve', '/leads/00000000-0000-4000-8000-000000000000/rescore']) {
+    expect((await c.api('/leads/export')).status).toBe(400); // no longer an export route: it is treated as a lead id
+    for (const path of ['/unsubscribe/x', '/outreach/x', '/classification/run', '/leads/00000000-0000-4000-8000-000000000000/approve', '/leads/00000000-0000-4000-8000-000000000000/rescore', '/discovery/import', '/discovery/youtube']) {
       expect((await c.api(path, { method: 'POST' })).status).toBe(404);
     }
   });
@@ -33,24 +34,17 @@ describe('auth', () => {
 
 describe('import & dedupe', () => {
   it('creates leads, then updates (never duplicates) on re-import, and keeps the stage', async () => {
-    expect((await importLeads(c.api, [row('alpha'), row('beta')])).json).toMatchObject({ created: 2, updated: 0, errors: [] });
+    expect((await importLeads(c, [row('alpha'), row('beta')]))).toMatchObject({ created: 2, updated: 0 });
     const a = await lead('alpha');
     await c.api(`/leads/${a.id}/stage`, { method: 'POST', body: { stage: 'CONTACTED', note: 'emailed' }, actor: 'dana' });
-    const again = await importLeads(c.api, [row('alpha', { followers: 999999 }), row('beta')]);
-    expect(again.json).toMatchObject({ created: 0, updated: 2 });
+    const again = await importLeads(c, [row('alpha', { followers: 999999 }), row('beta')]);
+    expect(again).toMatchObject({ created: 0, updated: 2 });
     expect(await c.db.lead.count()).toBe(2);
     expect(await lead('alpha')).toMatchObject({ stage: 'CONTACTED', followers: 999999, stageBy: 'dana' });
   });
   it('treats handles case-insensitively', async () => {
-    await importLeads(c.api, [row('MixedCase')]); await importLeads(c.api, [row('mixedcase')]);
+    await importLeads(c, [row('MixedCase')]); await importLeads(c, [row('mixedcase')]);
     expect(await c.db.lead.count()).toBe(1);
-  });
-  it('reports bad rows and rejects a malformed request', async () => {
-    const r = await c.api('/discovery/import', { method: 'POST', body: { format: 'csv', data: 'platform,handle,followers\nyoutube,ok,10\nyoutube,bad,abc\n' } });
-    expect(r.json.created).toBe(1);
-    expect(r.json.errors[0].row).toBe(3);
-    expect((await c.api('/discovery/import', { method: 'POST', body: { format: 'json', data: 'nope' } })).status).toBe(400);
-    expect((await c.api('/discovery/import', { method: 'POST', body: { format: 'xml', data: 'x' } })).status).toBe(400);
   });
   it('refuses private and non-http URLs instead of fetching them', async () => {
     const r = await c.api('/discovery/urls', { method: 'POST', body: { urls: ['http://169.254.169.254/latest/meta-data/', 'http://localhost:4100/', 'http://10.0.0.5/', 'file:///etc/passwd'] } });
@@ -67,7 +61,7 @@ describe('import & dedupe', () => {
 
 describe('partner stage', () => {
   it('starts as FOUND, moves through contacted / in progress / registered, and is audited', async () => {
-    await importLeads(c.api, [row('p1')]);
+    await importLeads(c, [row('p1')]);
     const l = await lead('p1');
     expect(l.stage).toBe('FOUND');
     for (const stage of ['CONTACTED', 'IN_PROGRESS', 'REGISTERED']) {
@@ -79,14 +73,14 @@ describe('partner stage', () => {
     expect(await c.db.auditLog.count({ where: { action: 'LEAD_STAGE', leadId: l.id, actor: 'dana' } })).toBe(3);
   });
   it('rejects unknown stages and unknown leads', async () => {
-    await importLeads(c.api, [row('p2')]);
+    await importLeads(c, [row('p2')]);
     const l = await lead('p2');
     expect((await c.api(`/leads/${l.id}/stage`, { method: 'POST', body: { stage: 'SENT' } })).status).toBe(400);
     expect((await c.api('/leads/00000000-0000-4000-8000-000000000000/stage', { method: 'POST', body: { stage: 'CONTACTED' } })).status).toBe(404);
     expect((await c.api('/leads/not-a-uuid/stage', { method: 'POST', body: { stage: 'CONTACTED' } })).status).toBe(400);
   });
   it('filters by stage and counts them in the stats', async () => {
-    await importLeads(c.api, [row('a1'), row('a2'), row('a3')]);
+    await importLeads(c, [row('a1'), row('a2'), row('a3')]);
     await c.api(`/leads/${(await lead('a1')).id}/stage`, { method: 'POST', body: { stage: 'REGISTERED' } });
     await c.api(`/leads/${(await lead('a2')).id}/stage`, { method: 'POST', body: { stage: 'CONTACTED' } });
     expect((await c.api('/leads?stage=REGISTERED')).json.items.map((l: any) => l.handle)).toEqual(['a1']);
@@ -97,7 +91,7 @@ describe('partner stage', () => {
 
 describe('leads', () => {
   it('enriching validates input and ignores unknown fields', async () => {
-    await importLeads(c.api, [{ platform: 'tiktok', handle: 'bare' }]);
+    await importLeads(c, [{ platform: 'tiktok', handle: 'bare' }]);
     const l = await lead('bare');
     expect((await c.api(`/leads/${l.id}`, { method: 'PATCH', body: { contactEmail: 'nope' } })).status).toBe(400);
     expect((await c.api(`/leads/${l.id}`, { method: 'PATCH', body: { country: 'KENYA' } })).status).toBe(400);
@@ -106,14 +100,14 @@ describe('leads', () => {
     expect(r.json).toMatchObject({ contactEmail: 'bare@example.com', country: 'KE', bio });
   });
   it('deletes a lead', async () => {
-    await importLeads(c.api, [row('gone')]);
+    await importLeads(c, [row('gone')]);
     const l = await lead('gone');
     expect((await c.api(`/leads/${l.id}`, { method: 'DELETE' })).json).toEqual({ deleted: true });
     expect(await c.db.lead.count()).toBe(0);
     expect((await c.api(`/leads/${l.id}`)).status).toBe(404);
   });
   it('filters, searches and paginates, newest first', async () => {
-    await importLeads(c.api, [row('one', { platform: 'telegram' }), row('two'), row('three')]);
+    await importLeads(c, [row('one', { platform: 'telegram' }), row('two'), row('three')]);
     expect((await c.api('/leads?platform=TELEGRAM')).json.total).toBe(1);
     expect((await c.api('/leads?q=THREE')).json.total).toBe(1);
     expect((await c.api('/leads?limit=2&offset=2')).json.items).toHaveLength(1);
@@ -122,29 +116,5 @@ describe('leads', () => {
     expect((await c.api('/leads/not-a-uuid')).status).toBe(400);
     expect((await c.api('/leads/00000000-0000-4000-8000-000000000000')).status).toBe(404);
     expect((await c.api('/leads/stats')).json).toMatchObject({ total: 3, last24h: 3 });
-  });
-});
-
-describe('export', () => {
-  it('downloads the filtered leads as a spreadsheet, including the stage', async () => {
-    await importLeads(c.api, [row('great'), row('weak', { followers: 300 }), row('third')]);
-    await c.api(`/leads/${(await lead('great')).id}/stage`, { method: 'POST', body: { stage: 'REGISTERED', note: 'signed up' } });
-    const all = await c.api('/leads/export');
-    expect(all.status).toBe(200);
-    const lines = all.text.trim().split('\r\n');
-    expect(lines[0]).toMatch(/^Name,Stage,Stage note,Platform,Handle,Link,Followers,Country/);
-    expect(lines).toHaveLength(4);
-    expect(all.text).toMatch(/great,REGISTERED,signed up,YOUTUBE,great/);
-    expect((await c.api('/leads/export?stage=REGISTERED')).text.trim().split('\r\n')).toHaveLength(2);
-    expect((await c.api('/leads/export?q=weak')).text.trim().split('\r\n')).toHaveLength(2);
-    expect((await c.api('/leads/export?stage=DECLINED')).text.trim().split('\r\n')).toHaveLength(1); // header only
-  });
-
-  it('cannot be used to attack whoever opens the spreadsheet (formula injection) and quotes awkward text', async () => {
-    await importLeads(c.api, [row('evil', { name: '=HYPERLINK("http://evil.example","click")', bio: '+cmd|calc, "quoted"\nnewline ' + bio })]);
-    const text = (await c.api('/leads/export')).text;
-    expect(text).toContain(`"'=HYPERLINK(""http://evil.example"",""click"")"`); // prefixed with an apostrophe, quotes doubled
-    expect(text).not.toMatch(/(^|,)=HYPERLINK/m);
-    expect(text.split('\r\n')[1].startsWith('"\'=HYPERLINK')).toBe(true);
   });
 });

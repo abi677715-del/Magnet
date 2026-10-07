@@ -15,6 +15,8 @@ export const SEGMENTS = {
   X_ACCOUNTS: 'Public X (Twitter) accounts',
   YOUTUBE_CHANNELS: 'YouTube channels',
   TIKTOK_CREATORS: 'TikTok creators with public profiles',
+  INSTAGRAM_ACCOUNTS: 'Instagram accounts with public profiles',
+  FACEBOOK_PAGES: 'Public Facebook pages',
 } as const;
 export type SegmentKey = keyof typeof SEGMENTS;
 

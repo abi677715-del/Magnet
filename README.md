@@ -4,29 +4,25 @@ Finds partner candidates for the **Melbet** affiliate programme and tracks where
 does any contacting** and records the result. Nothing is ever sent to anyone.
 
 ```
- DISCOVERY                                                      YOUR TEAM
- AI web search ──┐
- YouTube search ─┼─► partners ─► Export to CSV       Found → Contacted → In progress → Registered  (or Declined)
- Pasted links ───┤
- CSV import ─────┘
+ AI web search  ──►  partners  ──►  Found → Contacted → In progress → Registered  (or Declined)
+ Pasted links   ──►                 (set by your team; nothing is ever sent)
 ```
 
 ## What it does
 
 | Step | How |
 |---|---|
-| **Find** | One big **Find partners** button runs the AI web search (see below). Also: YouTube keyword search (official API), pasted links (YouTube, Telegram, websites), and CSV/JSON import. The same creator found twice is one partner. |
+| **Find** | One big **Find partners** button searches the public web across YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit and websites (see below). You can also paste links you found yourself. The same creator found twice is one partner. |
 | **Track** | Each partner has a stage you set by hand: **Found → Contacted → In progress → Registered** (or **Declined**), with an optional note. The header shows how many are in each stage, and you can filter the list by stage. Who changed it and when is recorded. |
-| **Take it out** | **Export to CSV** downloads the partners you are looking at (any filter, including stage), newest first, with links, stage, notes and any public contact email. |
 
 ## Finding partners with AI
 
-On the **Partners** tab press **Find partners**. Under *Options* you can change the categories:
+Press **Find partners**. It searches every category below in one go:
 
 football channels · sports news pages · prediction/tips creators · sports influencers · betting & prediction communities ·
-football websites · public Telegram channels · public Reddit communities · public X accounts · YouTube channels · TikTok creators with public profiles
+football websites · public Telegram channels · public Reddit communities · public X accounts · YouTube channels · TikTok, Instagram and Facebook pages with public profiles
 
-Optionally add a target country, a language and an extra focus (for example "Swahili-speaking tipsters"). Claude runs web searches
+Under *Narrow the search* you can add a target country, a language and an extra focus (for example "Swahili-speaking tipsters"). Claude runs web searches
 (several per run), and a run takes roughly 1–3 minutes.
 
 **Public information only.** Claude searches the open web like a person would. It cannot and does not look into private groups,
@@ -72,7 +68,6 @@ All in environment variables (see `.env.example`): `PRODUCT_DESCRIPTION` and `ID
 ## Costs
 
 The AI web search is billed per search plus tokens (see Anthropic's pricing page); `DISCOVERY_MODEL` can be set to a cheaper model.
-YouTube keyword search costs about 100 of the 10,000 free daily quota units per search.
 
 ## Compliance — please read
 
@@ -80,20 +75,20 @@ This tool helps with the research; **you** are responsible for the programme bei
 
 - **Check the rules for each market** where you recruit and where the partner's audience lives. Online betting and its promotion are illegal or restricted in many countries.
 - **Follow Melbet's affiliate terms and any marketing guidelines** you have been given. This tool does not know them: put the important ones into `IDEAL_AFFILIATE_PROFILE` and check every lead against them.
-- **Only public information is used**, and only from sources that allow it: Claude's web search, the official YouTube API, public Telegram previews, and websites whose `robots.txt` allows it. TikTok, Instagram and X are import-only on purpose (scraping them breaks their terms).
+- **Only public information is used**, and only from sources that allow it: Claude's web search, the official YouTube API, public Telegram previews, and websites whose `robots.txt` allows it. TikTok, Instagram, Facebook, X and Reddit pages are found through the web search only; the app does not scrape them (that breaks their terms), and it cannot see anything private or behind a login.
 - **Contact people yourselves, lawfully.** The app sends nothing. Contact details shown are only ones a site publishes itself. Cold-contacting people has legal rules in many countries (consent, opt-out, sender identity); follow them when you reach out.
 - The AI search can be wrong. Check a partner yourself before you contact them. The app no longer screens for under-18 audiences or other red flags, so that check is yours.
 
 ## Security notes
 
 - One shared team key (`ADMIN_API_KEY`) protects the dashboard and API; the API refuses everything if it isn't set. For a larger team, put it behind your company's login/VPN.
-- Text from creators' profiles is untrusted: it is never inserted into the page as HTML, it is fenced off from the AI's instructions, and in the CSV export cells that could run as spreadsheet formulas are neutralised.
+- Text from creators' profiles is untrusted: it is never inserted into the page as HTML, it is fenced off from the AI's instructions.
 - Pasted URLs are fetched by the server, so private/internal addresses are refused (including after redirects). Only managers with the key can trigger a fetch.
 
 ## API (all need `Authorization: Bearer <ADMIN_API_KEY>`)
 
-`POST /discovery/ai` (then poll `GET /discovery/ai/:id`) · `POST /discovery/youtube` · `POST /discovery/urls` · `POST /discovery/import` ·
-`GET /leads` (`stage`, `platform`, `since`, `q`, `limit`, `offset`) · `GET /leads/export` (same filters, CSV) · `GET /leads/stats` · `GET /leads/:id` ·
+`POST /discovery/ai` (then poll `GET /discovery/ai/:id`) · `POST /discovery/urls` ·
+`GET /leads` (`stage`, `platform`, `since`, `q`, `limit`, `offset`) · `GET /leads/stats` · `GET /leads/:id` ·
 `PATCH /leads/:id` · `POST /leads/:id/stage` (`FOUND`, `CONTACTED`, `IN_PROGRESS`, `REGISTERED`, `DECLINED`) · `DELETE /leads/:id` · public: `GET /health`.
 
 ## Tests
@@ -105,5 +100,5 @@ DATABASE_URL=... npm run test:e2e      # end-to-end tests against a real databas
 
 ## Not built yet
 
-- Direct Reddit/X/TikTok/Instagram APIs (paid or restricted). The AI web search finds their public pages instead, and details can be imported.
+- Direct Reddit/X/TikTok/Instagram APIs (paid or restricted). The AI web search finds their public pages instead, and details can be added by hand.
 - Per-person logins and roles.

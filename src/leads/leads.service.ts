@@ -13,16 +13,6 @@ export interface LeadQuery {
   offset?: number;
 }
 
-/**
- * Quotes a CSV cell. Text that starts with = + - @ would be run as a formula by Excel/Sheets, and these
- * values come from strangers' public profiles, so such cells are prefixed with an apostrophe.
- */
-export function csvCell(value: unknown): string {
-  let text = value == null ? '' : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
 @Injectable()
 export class LeadsService {
   constructor(
@@ -62,18 +52,6 @@ export class LeadsService {
     const lead = await this.prisma.lead.findUnique({ where: { id } });
     if (!lead) throw new NotFoundException('Lead not found');
     return lead;
-  }
-
-  /** Everything matching the filter as CSV (up to 5,000 rows), newest first, for the team to work from outside the app. */
-  async exportCsv(q: LeadQuery): Promise<string> {
-    const leads = await this.prisma.lead.findMany({
-      where: this.where(q),
-      orderBy: [{ discoveredAt: 'desc' }, { displayName: 'asc' }],
-      take: 5000,
-    });
-    const header = ['Name', 'Stage', 'Stage note', 'Platform', 'Handle', 'Link', 'Followers', 'Country', 'Language', 'Public contact email', 'About', 'Found via', 'Found on'];
-    const rows = leads.map((l) => [l.displayName, l.stage, l.stageNote, l.platform, l.handle, l.url, l.followers, l.country, l.language, l.contactEmail, l.bio, l.source, l.discoveredAt.toISOString().slice(0, 10)]);
-    return [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
   }
 
   async stats() {

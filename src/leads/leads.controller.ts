@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { PartnerStage, Platform } from '@prisma/client';
 import { IsEmail, IsEnum, IsOptional, IsString, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { ApiKeyGuard } from '../common/api-key.guard';
@@ -38,14 +38,6 @@ export class LeadsController {
   @Get('leads')
   list(@Query() query: Record<string, string | undefined>) {
     return this.leads.list(this.parseQuery(query));
-  }
-
-  /** Same filters as the list; downloads a spreadsheet. */
-  @Get('leads/export')
-  @Header('Content-Type', 'text/csv; charset=utf-8')
-  @Header('Content-Disposition', 'attachment; filename="partner-leads.csv"')
-  export(@Query() query: Record<string, string | undefined>) {
-    return this.leads.exportCsv(this.parseQuery(query));
   }
 
   @Get('leads/stats')

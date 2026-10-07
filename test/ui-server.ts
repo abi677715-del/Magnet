@@ -28,13 +28,6 @@ import { AI_DISCOVERER } from '../src/discovery/ai-discovery';
   await app.listen(4100);
   const api = (p: string, body: unknown) => fetch('http://localhost:4100' + p, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + process.env.ADMIN_API_KEY }, body: JSON.stringify(body) });
   const bio = 'Weekly football betting previews and match analysis for East African fans.';
-  await api('/discovery/import', { format: 'json', data: [
-    { platform: 'youtube', handle: 'footballpro', name: 'Football Pro Tips', followers: 240000, country: 'KE', bio, email: 'pro@example.com' },
-    { platform: 'telegram', handle: 'xsstest', name: '=HYPERLINK("http://evil.example","x") <img src=x onerror="window.__pwned=1">', followers: 90000, country: 'NG', bio: '<script>window.__pwned=1</script> ' + bio, email: 'xss@example.com' },
-    { platform: 'youtube', handle: 'kidscorner', name: 'Kids Corner Football', followers: 500000, country: 'KE', bio },
-    { platform: 'tiktok', handle: 'sureodds', name: 'Sure Odds', followers: 800000, country: 'KE', bio },
-    { platform: 'instagram', handle: 'smalltips', name: 'Small Tips', followers: 800, country: 'ET', bio },
-    { platform: 'tiktok', handle: 'barelink', name: 'Bare Link' },
-  ] });
+  await api('/discovery/urls', { urls: ['https://t.me/s/footballpro'] }); // unreachable in the sandbox: saved as a bare link
   console.log('READY');
 })();

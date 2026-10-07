@@ -18,14 +18,17 @@ async function finish(jobId: string) {
 }
 const cand = (url: string, name = 'Name', note = 'Posts daily football tips') => ({ url, name, note });
 
-it('needs the key and valid input', async () => {
+it('searches every category when none are given, and rejects bad input', async () => {
+  const all = await start({});
+  expect(all.status).toBe(201);
+  await finish(all.json.jobId);
+  expect(c.discoverer.requests[0].segments).toHaveLength(13); // nothing picked = every category
   expect((await c.api('/discovery/ai', { method: 'POST', body: { segments: ['X_ACCOUNTS'] }, key: null })).status).toBe(401);
-  expect((await start({ segments: [] })).status).toBe(400);
   expect((await start({ segments: ['PRIVATE_GROUPS'] })).status).toBe(400);
   expect((await start({ segments: ['X_ACCOUNTS'], limit: 500 })).status).toBe(400);
   expect((await start({ segments: ['X_ACCOUNTS'], country: 'KENYA' })).status).toBe(400);
   expect((await c.api('/discovery/ai/not-a-job')).status).toBe(404);
-  expect(Object.keys((await c.api('/discovery/ai/segments')).json)).toHaveLength(11);
+  expect(Object.keys((await c.api('/discovery/ai/segments')).json)).toHaveLength(13);
 });
 
 it('saves verified suggestions as leads and rejects invented ones', async () => {

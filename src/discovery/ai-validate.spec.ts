@@ -38,8 +38,8 @@ describe('validateCandidates', () => {
   });
 
   it('rejects links that are not profiles, generic big sites, and duplicates', () => {
-    const s = ['https://www.facebook.com/page', 'https://t.me/dup', 'https://www.youtube.com/watch?v=abc'];
-    const { accepted, rejected } = validateCandidates([c('https://www.facebook.com/page'), c('https://www.youtube.com/watch?v=abc'), c('https://t.me/dup'), c('https://t.me/dup'), c('javascript:alert(1)')], s, 5);
+    const s = ['https://www.google.com/page', 'https://t.me/dup', 'https://www.youtube.com/watch?v=abc'];
+    const { accepted, rejected } = validateCandidates([c('https://www.google.com/page'), c('https://www.youtube.com/watch?v=abc'), c('https://t.me/dup'), c('https://t.me/dup'), c('javascript:alert(1)')], s, 5);
     expect(accepted).toHaveLength(1);
     expect(rejected.map((r) => r.reason)).toEqual(['Generic site, not a partner', 'Not a profile, channel or site link', 'Duplicate', 'Not a profile, channel or site link']);
   });

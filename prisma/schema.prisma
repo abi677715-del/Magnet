@@ -12,6 +12,7 @@ enum Platform {
   X
   TIKTOK
   INSTAGRAM
+  FACEBOOK
   REDDIT
   TELEGRAM
   WEBSITE

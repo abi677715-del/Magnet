@@ -44,6 +44,12 @@ export function parseLeadUrl(input: string): ParsedUrl | null {
     if (!first || ['p', 'reel', 'reels', 'explore', 'stories', 'accounts'].includes(first)) return null;
     return make(Platform.INSTAGRAM, clean(first), `https://www.instagram.com/${first}`);
   }
+  if (host === 'facebook.com' || host === 'fb.com') {
+    const first = parts[0] ?? '';
+    if (first === 'profile.php') return null;
+    if (!first || ['groups', 'watch', 'share', 'sharer', 'sharer.php', 'story.php', 'photo', 'photo.php', 'events', 'marketplace', 'login', 'login.php', 'dialog', 'plugins', 'help', 'policies', 'reel', 'reels', 'stories', 'hashtag', 'pages'].includes(first)) return null;
+    return make(Platform.FACEBOOK, clean(first), `https://www.facebook.com/${first}`);
+  }
   if (host === 'x.com' || host === 'twitter.com') {
     const first = parts[0] ?? '';
     if (!first || ['i', 'home', 'search', 'explore', 'intent', 'share'].includes(first)) return null;
