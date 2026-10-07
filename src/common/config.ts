@@ -23,8 +23,8 @@ export const config = {
     process.env.IDEAL_AFFILIATE_PROFILE ??
     'Sports, football and betting content creators, tipster channels (honest, with a visible track record), streamers, comparison and review websites, and sports communities whose audience is adult and already interested in betting.',
 
-  // Model used for the web search. Defaults to the most capable Claude model; set a cheaper one here if volume grows.
-  discoveryModel: process.env.DISCOVERY_MODEL ?? 'claude-opus-5-5',
+  // Model used for the web search. Defaults to Sonnet (cheaper, and available on more plans); set a more capable one here if you want.
+  discoveryModel: process.env.DISCOVERY_MODEL ?? 'claude-sonnet-5-5',
   aiDiscoveryDailyLimit: num('AI_DISCOVERY_DAILY_LIMIT', 20),
   aiDiscoveryMaxSearches: num('AI_DISCOVERY_MAX_SEARCHES', 10),
 };

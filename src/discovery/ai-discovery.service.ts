@@ -1,3 +1,4 @@
+import { friendlyAiError } from '../common/ai-error';
 import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditService } from '../common/audit.service';
@@ -108,7 +109,8 @@ export class AiDiscoveryService {
       await this.audit.log(actor, 'DISCOVERY_AI_RESULT', undefined, { jobId: job.id, created, updated, rejected: rejected.length });
     } catch (err) {
       job.status = 'failed';
-      job.error = err instanceof Error ? err.message : 'The AI search failed';
+      job.error = friendlyAiError(err);
+      this.logger.warn(`AI discovery error detail: ${err instanceof Error ? err.message : String(err)}`);
       this.logger.warn(`AI discovery failed: ${job.error}`);
     } finally {
       job.finishedAt = new Date().toISOString();

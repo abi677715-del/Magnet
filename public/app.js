@@ -62,7 +62,7 @@ const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'FACEBOOK', 'REDDIT', 
 const cards = {};
 const state = { filters: {}, selected: null, offset: 0, since: '' };
 
-function signOut() { for (const k of Object.keys(cards)) delete cards[k]; store.del('key'); $('app').hidden = true; $('login').hidden = false; $('logout').hidden = true; $('stats').replaceChildren(); }
+function signOut() { for (const k of Object.keys(cards)) delete cards[k]; store.del('key'); $('app').hidden = true; $('foot').hidden = true; $('login').hidden = false; $('logout').hidden = true; $('stats').replaceChildren(); }
 
 async function start() {
   $('actor').value = store.get('actor');
@@ -78,7 +78,7 @@ async function start() {
 }
 
 function showApp() {
-  $('login').hidden = true; $('app').hidden = false; $('logout').hidden = false;
+  $('login').hidden = true; $('app').hidden = false; $('foot').hidden = false; $('logout').hidden = false;
   loadStats(); renderTab();
 }
 
@@ -99,7 +99,7 @@ async function renderTab() {
   try {
     const { items, total } = await api('/leads?' + q);
     cards.find ||= findCard();
-    const parts = [cards.find, filterBar()];
+    const parts = [filterBar()];
     if (state.since) parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => { state.since = ''; state.offset = 0; renderTab(); } }, 'Show all partners')));
     if (!items.length) parts.push(h('p', { class: 'muted' }, 'Nothing here yet. Press "Find partners" to start.'));
     parts.push(...items.map(leadCard));
@@ -107,6 +107,7 @@ async function renderTab() {
       h('button', { class: 'ghost', disabled: state.offset === 0, onclick: () => { state.offset = Math.max(0, state.offset - 25); renderTab(); } }, 'Previous'),
       h('span', { class: 'muted' }, total ? (state.offset + 1) + '–' + Math.min(state.offset + 25, total) + ' of ' + total : ''),
       h('button', { class: 'ghost', disabled: state.offset + 25 >= total, onclick: () => { state.offset += 25; renderTab(); } }, 'Next')));
+    parts.push(cards.find);
     pane.replaceChildren(...parts);
   } catch (err) { pane.replaceChildren(h('p', { class: 'error' }, err.message)); }
 }
@@ -197,7 +198,7 @@ function findCard() {
         out.textContent = ''; go.disabled = false;
         state.since = r.created ? startedAt : ''; state.offset = 0; state.filters = {};
         loadStats(); await renderTab();
-        $('list-pane').prepend(h('div', { class: 'card find-result' },
+        cards.find.before(h('div', { class: 'card find-result' },
           h('div', {}, 'Done: ' + r.created + ' new partners, ' + r.updated + ' already known. ' + r.verifiedFromSource + ' checked directly at the source. ' + r.rejected.length + ' suggestions rejected.'),
           r.rejected.length ? h('details', {}, h('summary', {}, 'Why were some rejected?'), h('ul', { class: 'plain' }, r.rejected.map((x) => h('li', {}, x.url + ' — ' + x.reason)))) : null));
         return;
