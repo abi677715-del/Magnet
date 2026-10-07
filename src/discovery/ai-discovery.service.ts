@@ -79,7 +79,14 @@ export class AiDiscoveryService {
   private async run(job: AiJob, actor: string, req: AiSearchRequest) {
     try {
       const found = await this.discoverer.find(req);
-      const { accepted, rejected } = validateCandidates(found.candidates, found.seenUrls, req.limit);
+      const validated = validateCandidates(found.candidates, found.seenUrls, req.limit);
+      const { rejected } = validated;
+      // Asked for one platform: anything else the AI wandered onto is dropped, not saved.
+      const accepted = validated.accepted.filter((c) => {
+        if (!req.platform || c.parsed.platform === req.platform) return true;
+        rejected.push({ url: c.parsed.url, reason: `Not on ${req.platform}` });
+        return false;
+      });
 
       let created = 0;
       let updated = 0;
@@ -97,6 +104,10 @@ export class AiDiscoveryService {
             raw.displayName = c.name || raw.displayName;
             raw.bio = c.note ? `${UNVERIFIED_PREFIX} ${c.note}` : '';
           }
+          // The search was for this country/language, and the page itself rarely says, so record what was asked for
+          // (a value read from the source wins).
+          raw.country = raw.country ?? req.country ?? null;
+          raw.language = raw.language ?? req.language ?? null;
           const r = await this.ingest.upsert(raw);
           r.created ? created++ : updated++;
         } catch (err) {

@@ -107,3 +107,24 @@ it('enforces a daily limit on AI searches', async () => {
   expect(over.json.message).toMatch(/Daily AI search limit/);
   expect(c.discoverer.requests).toHaveLength(4);
 });
+
+it('Telegram + France + French: searches only Telegram, drops other platforms, and records the country and language', async () => {
+  c.discoverer.result = {
+    searches: 2,
+    seenUrls: ['https://t.me/s/footfr', 'https://x.com/footfrx'],
+    candidates: [cand('https://t.me/footfr', 'Foot FR'), cand('https://x.com/footfrx', 'Foot FR X')],
+  };
+  const r = await start({ platform: 'TELEGRAM', country: 'FR', language: 'French' });
+  expect(r.status).toBe(201);
+  const job = await finish(r.json.jobId);
+  expect(c.discoverer.requests[0]).toMatchObject({ platform: 'TELEGRAM', segments: ['TELEGRAM_CHANNELS'], country: 'FR', language: 'French' });
+  expect(job.result).toMatchObject({ created: 1 });
+  expect(job.result.rejected).toEqual([{ url: 'https://x.com/footfrx', reason: 'Not on TELEGRAM' }]);
+  expect(await c.db.lead.findFirstOrThrow({ where: { handle: 'footfr' } })).toMatchObject({ platform: 'TELEGRAM', country: 'FR', language: 'French' });
+  const found = await c.api('/leads?platform=TELEGRAM&country=fr&language=fr');
+  expect(found.json.items.map((l: any) => l.handle)).toEqual(['footfr']);
+});
+
+it('rejects an unknown platform', async () => {
+  expect((await start({ platform: 'MYSPACE' })).status).toBe(400);
+});

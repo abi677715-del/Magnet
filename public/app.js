@@ -268,22 +268,23 @@ function detail(l) {
 function findCard() {
   const box = h('div', { class: 'card' });
   const out = h('div', { class: 'meta', style: 'margin-top:8px' });
+  const platform = h('select', { 'aria-label': 'Search platform' }, h('option', { value: '' }, 'All platforms'), PLATFORMS.map((p) => h('option', { value: p }, p.charAt(0) + p.slice(1).toLowerCase())));
   const country = h('select', { 'aria-label': 'Target country' }, h('option', { value: '' }, 'Any country'), COUNTRIES.map(([v, n]) => h('option', { value: v }, n)));
   const language = h('select', { 'aria-label': 'Language' }, h('option', { value: '' }, 'Any language'), LANGUAGES.map(([v, n]) => h('option', { value: n }, n)));
   const focus = h('input', { placeholder: 'Extra focus (optional)', maxlength: 200, style: 'flex:1;min-width:220px' });
   const limit = h('select', { 'aria-label': 'How many' }, [10, 15, 25].map((n) => h('option', { value: n, selected: n === 15 }, 'Up to ' + n)));
   const go = h('button', { id: 'find-btn', style: 'font-size:18px;padding:14px 28px' }, 'Find partners');
   box.append(
-    h('div', { class: 'row' }, go, h('span', { class: 'muted' }, 'Searches everywhere that is public: YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit and websites. Takes about 1–3 minutes.')),
-    h('details', {}, h('summary', {}, 'Narrow the search (optional)'), h('div', { class: 'row' }, country, language, focus, limit)),
-    h('p', { class: 'meta' }, 'Only public pages are used. Private groups, closed channels and anything behind a login cannot be searched.'),
+    h('div', { class: 'row' }, platform, country, language, go),
+    h('details', {}, h('summary', {}, 'More options'), h('div', { class: 'row' }, focus, limit)),
+    h('p', { class: 'meta' }, 'Pick a platform, country and language, for example Telegram + France + French, then press Find partners. Takes about 1–3 minutes. Only public pages are used; private groups, closed channels and anything behind a login cannot be searched.'),
     out);
 
   go.addEventListener('click', async () => {
     go.disabled = true; out.textContent = 'Starting…';
     const startedAt = new Date().toISOString();
     try {
-      const { jobId } = await api('/discovery/ai', { method: 'POST', body: { country: country.value.trim() || undefined, language: language.value.trim() || undefined, focus: focus.value.trim() || undefined, limit: Number(limit.value) } });
+      const { jobId } = await api('/discovery/ai', { method: 'POST', body: { platform: platform.value || undefined, country: country.value || undefined, language: language.value || undefined, focus: focus.value.trim() || undefined, limit: Number(limit.value) } });
       const began = Date.now();
       for (;;) {
         out.textContent = 'Searching the web… ' + Math.round((Date.now() - began) / 1000) + 's (this usually takes 1–3 minutes)';
@@ -295,6 +296,10 @@ function findCard() {
         toast('Found ' + r.created + ' new partners.');
         out.textContent = ''; go.disabled = false;
         state.since = r.created ? startedAt : ''; state.offset = 0; state.filters = {};
+        if (platform.value) state.filters.platform = platform.value;
+        if (country.value) state.filters.country = country.value;
+        const lang = LANGUAGES.find(([, n]) => n === language.value);
+        if (lang) state.filters.language = lang[0];
         loadStats(); await renderTab();
         cards.find.before(h('div', { class: 'card find-result' },
           h('div', {}, 'Done: ' + r.created + ' new partners, ' + r.updated + ' already known. ' + r.verifiedFromSource + ' checked directly at the source. ' + r.rejected.length + ' suggestions rejected.'),
