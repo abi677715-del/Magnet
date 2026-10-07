@@ -3,33 +3,68 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Affiliate Magnet</title>
+  <title>Melbet Partner Recruitment</title>
+  <link rel="icon" href="brand/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="top">
-    <h1>Affiliate Magnet</h1>
+    <a class="brand" href="#" aria-label="Melbet partner recruitment"><img src="brand/logo.svg" alt="Melbet" height="30"></a>
+    <nav id="nav" class="nav" hidden>
+      <button id="nav-partners" class="on">Partners</button>
+      <button id="nav-admin" hidden>Admin <span id="pending-badge" class="badge" hidden></span></button>
+    </nav>
     <div class="who">
-      <input id="actor" placeholder="Your name" maxlength="40" aria-label="Your name">
+      <span id="whoami" class="muted"></span>
       <button id="logout" class="ghost" hidden>Sign out</button>
     </div>
   </header>
 
-  <main id="login" class="card narrow" hidden>
-    <h2>Sign in</h2>
-    <p class="muted">Enter the team access key (the <code>ADMIN_API_KEY</code> set on the server).</p>
-    <form id="login-form">
-      <input id="key" type="password" autocomplete="current-password" placeholder="Access key" aria-label="Access key" required>
-      <button type="submit">Sign in</button>
-    </form>
-    <p id="login-error" class="error"></p>
+  <div class="banner-strip"><img src="brand/banner.svg" alt="" class="banner-img"><div class="banner-text"><h1>Partner recruitment</h1><p>Find, track and sign up affiliate partners</p></div></div>
+
+  <main id="login" class="auth" hidden>
+    <div class="card auth-card">
+      <div class="seg" role="tablist">
+        <button id="tab-signin" class="on" role="tab">Sign in</button>
+        <button id="tab-register" role="tab">Register</button>
+      </div>
+
+      <form id="login-form" class="stack">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" autocomplete="username" required maxlength="120">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" required maxlength="100">
+        <button type="submit" class="wide">Sign in</button>
+        <details class="keybox"><summary>Sign in with the admin key instead</summary>
+          <label for="key">Admin key (the <code>ADMIN_API_KEY</code> set on the server)</label>
+          <input id="key" type="password" autocomplete="off" maxlength="200">
+          <button type="button" id="key-signin" class="ghost wide">Use admin key</button>
+        </details>
+      </form>
+
+      <form id="register-form" class="stack" hidden>
+        <label for="reg-name">Full name</label>
+        <input id="reg-name" autocomplete="name" required minlength="2" maxlength="60">
+        <label for="reg-email">Work email</label>
+        <input id="reg-email" type="email" autocomplete="email" required maxlength="120">
+        <label for="reg-password">Password (at least 8 characters)</label>
+        <input id="reg-password" type="password" autocomplete="new-password" required minlength="8" maxlength="100">
+        <label for="reg-password2">Repeat password</label>
+        <input id="reg-password2" type="password" autocomplete="new-password" required minlength="8" maxlength="100">
+        <button type="submit" class="wide">Request access</button>
+        <p class="muted small">An admin has to approve your registration before you can sign in.</p>
+      </form>
+      <p id="login-error" class="error" role="alert"></p>
+      <p id="login-info" class="info" role="status"></p>
+    </div>
   </main>
 
   <div id="app" hidden>
-    <div class="layout">
+    <div id="view-partners" class="layout">
       <section id="list-pane" class="list-pane"></section>
       <aside id="detail-pane" class="detail-pane" hidden></aside>
     </div>
+    <section id="view-admin" class="admin" hidden></section>
   </div>
 
   <footer id="foot" class="foot" hidden><div id="stats" class="stats"></div></footer>

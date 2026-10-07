@@ -1,22 +1,24 @@
 import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Length, Max, MaxLength, Min } from 'class-validator';
-import { ApiKeyGuard } from '../common/api-key.guard';
+import { AuthGuard } from '../common/auth.guard';
 import { AuditService } from '../common/audit.service';
 import { DiscoveryService } from './discovery.service';
 import { AiDiscoveryService } from './ai-discovery.service';
-import { SEGMENTS, SegmentKey } from './ai-discovery';
+import { Platform } from '@prisma/client';
+import { PLATFORM_SEGMENTS, SEGMENTS, SegmentKey } from './ai-discovery';
 
 class AiSearchDto {
   /** Leave out to search every category. */
   @IsOptional() @IsArray() @ArrayMaxSize(20) @IsIn(Object.keys(SEGMENTS), { each: true }) segments?: SegmentKey[];
+  @IsOptional() @IsIn(Object.values(Platform)) platform?: Platform;
   @IsOptional() @IsString() @Length(2, 2) country?: string;
   @IsOptional() @IsString() @MaxLength(40) language?: string;
   @IsOptional() @IsString() @MaxLength(200) focus?: string;
   @IsOptional() @IsInt() @Min(3) @Max(25) limit?: number;
 }
 @Controller('discovery')
-@UseGuards(ApiKeyGuard)
+@UseGuards(AuthGuard)
 @Throttle({ default: { limit: 20, ttl: 60_000 } })
 export class DiscoveryController {
   constructor(
@@ -30,7 +32,8 @@ export class DiscoveryController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   startAi(@Req() req: any, @Body() dto: AiSearchDto) {
     return this.aiDiscovery.start(req.actor, {
-      segments: dto.segments?.length ? [...new Set(dto.segments)] : (Object.keys(SEGMENTS) as SegmentKey[]),
+      segments: dto.platform ? PLATFORM_SEGMENTS[dto.platform] : dto.segments?.length ? [...new Set(dto.segments)] : (Object.keys(SEGMENTS) as SegmentKey[]),
+      platform: dto.platform,
       country: dto.country?.toUpperCase(),
       language: dto.language,
       focus: dto.focus,

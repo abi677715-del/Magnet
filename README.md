@@ -15,6 +15,24 @@ does any contacting** and records the result. Nothing is ever sent to anyone.
 | **Find** | One big **Find partners** button searches the public web across YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit and websites (see below). The same creator found twice is one partner. |
 | **Track** | Each partner has a stage you set by hand: **Found → Contacted → In progress → Registered** (or **Declined**), with an optional note. The header shows how many are in each stage, and you can filter the list by stage. Who changed it and when is recorded. |
 
+## Team accounts
+
+Everyone on the team has their own login.
+
+1. **Register.** On the sign-in page, open the **Register** tab and fill in name, work email and a password (8+ characters). This only creates a request.
+2. **Approve.** An admin opens the **Admin** page (the badge shows how many are waiting) and presses **Approve** or **Reject**. Nobody can sign in until approved.
+3. **Sign in.** Approved people sign in with email and password and stay signed in for 7 days.
+
+The admin page also lets an admin make someone an admin, reset a forgotten password, or switch a person off (they are signed out immediately).
+The shared `ADMIN_API_KEY` keeps working as an always-admin login, so you can never lock yourself out. Passwords are stored only as salted scrypt hashes; sessions
+are random tokens whose hashes are stored; sign-in and registration are rate limited. Every approval, rejection and role change is written to the audit log.
+Actions in the app (like a status change) are recorded under the signed-in person's name.
+
+## Look and feel
+
+The dark-and-yellow Melbet style is set by the CSS variables at the top of `public/style.css`. The logo and banner are `public/brand/logo.svg` and
+`public/brand/banner.svg`: they are neutral stand-ins, so replace them with the official files under the same names (see `public/brand/README.txt`).
+
 ## Finding partners with AI
 
 Press **Find partners**. It searches every category below in one go:
@@ -50,7 +68,7 @@ npm run build
 npm start                    # applies database migrations, then serves http://localhost:4100/dashboard/
 ```
 
-Open `/dashboard/`, sign in with your `ADMIN_API_KEY`, and add some leads.
+Open `/dashboard/` and sign in with your `ADMIN_API_KEY` (under *Sign in with the admin key instead*). That is how the first admin gets in. Then see *Team accounts* below.
 
 ## Deploy (Railway)
 
@@ -81,12 +99,13 @@ This tool helps with the research; **you** are responsible for the programme bei
 
 ## Security notes
 
-- One shared team key (`ADMIN_API_KEY`) protects the dashboard and API; the API refuses everything if it isn't set. For a larger team, put it behind your company's login/VPN.
+- Every API route needs either a signed-in, approved team member or the `ADMIN_API_KEY`; the API refuses everything if the key isn't set. Admin routes need an admin.
 - Text from creators' profiles is untrusted: it is never inserted into the page as HTML, it is fenced off from the AI's instructions.
 - Pages found by the search are fetched by the server, so private/internal addresses are refused (including after redirects).
 
 ## API (all need `Authorization: Bearer <ADMIN_API_KEY>`)
 
+`POST /auth/register` · `POST /auth/login` · `POST /auth/logout` · `GET /auth/me` · admin: `GET /admin/users` (`status`), `POST /admin/users/:id/{approve,reject,disable,make-admin,remove-admin,reset-password}` ·
 `POST /discovery/ai` (then poll `GET /discovery/ai/:id`) · `POST /discovery/urls` ·
 `GET /leads` (`stage`, `platform`, `since`, `q`, `limit`, `offset`) · `GET /leads/stats` · `GET /leads/:id` ·
 `PATCH /leads/:id` · `POST /leads/:id/stage` (`FOUND`, `CONTACTED`, `IN_PROGRESS`, `REGISTERED`, `DECLINED`) · `DELETE /leads/:id` · public: `GET /health`.
