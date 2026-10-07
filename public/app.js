@@ -53,6 +53,7 @@ const names = (type, codes) => { let dn = null; try { dn = new Intl.DisplayNames
   return codes.map((c) => { let n = c; try { n = (dn && dn.of(c)) || c; } catch { /* keep the code */ } return [c, n]; }).sort((a, b) => a[1].localeCompare(b[1])); };
 const COUNTRIES = names('region', COUNTRY_CODES);
 const LANGUAGES = names('language', LANGUAGE_CODES);
+const ROW_STAGES = [['FOUND', 'Status'], ['CONTACTED', 'Contacted'], ['IN_PROGRESS', 'In progress'], ['REGISTERED', 'Registered']];
 const STAGE_LABEL = Object.fromEntries(STAGES);
 const STAGE_CLASS = { FOUND: '', CONTACTED: 'warn', IN_PROGRESS: 'warn', REGISTERED: 'good', DECLINED: 'bad' };
 const PLATFORMS = ['YOUTUBE', 'X', 'TIKTOK', 'INSTAGRAM', 'FACEBOOK', 'REDDIT', 'TELEGRAM', 'WEBSITE'];
@@ -97,8 +98,8 @@ async function renderTab() {
   const q = new URLSearchParams({ ...state.filters, ...(state.since ? { since: state.since } : {}), limit: '25', offset: String(state.offset) });
   try {
     const { items, total } = await api('/leads?' + q);
-    cards.find ||= findCard(); cards.links ||= linksCard();
-    const parts = [cards.find, cards.links, filterBar()];
+    cards.find ||= findCard();
+    const parts = [cards.find, filterBar()];
     if (state.since) parts.push(h('div', { class: 'row' }, h('button', { class: 'ghost', onclick: () => { state.since = ''; state.offset = 0; renderTab(); } }, 'Show all partners')));
     if (!items.length) parts.push(h('p', { class: 'muted' }, 'Nothing here yet. Press "Find partners" to start.'));
     parts.push(...items.map(leadCard));
@@ -114,11 +115,9 @@ function filterBar() {
   const platform = h('select', { 'aria-label': 'Platform', onchange: (e) => { if (e.target.value) state.filters.platform = e.target.value; else delete state.filters.platform; state.offset = 0; renderTab(); } },
     h('option', { value: '' }, 'Any platform'), PLATFORMS.map((o) => h('option', { value: o, selected: state.filters.platform === o }, o)));
   const search = h('input', { type: 'search', placeholder: 'Search name, handle, bio', value: state.filters.q || '', onchange: (e) => { if (e.target.value.trim()) state.filters.q = e.target.value.trim(); else delete state.filters.q; state.offset = 0; renderTab(); } });
-  const stage = h('select', { 'aria-label': 'Stage', onchange: (e) => { if (e.target.value) state.filters.stage = e.target.value; else delete state.filters.stage; state.offset = 0; renderTab(); } },
-    h('option', { value: '' }, 'Any stage'), STAGES.map(([k, label]) => h('option', { value: k, selected: state.filters.stage === k }, label)));
   const pick = (key, label, options) => h('select', { 'aria-label': label, onchange: (e) => { if (e.target.value) state.filters[key] = e.target.value; else delete state.filters[key]; state.offset = 0; renderTab(); } },
     h('option', { value: '' }, label), options.map(([v, n]) => h('option', { value: v, selected: state.filters[key] === v }, n)));
-  return h('div', { class: 'filters' }, search, platform, stage, pick('country', 'Any country', COUNTRIES), pick('language', 'Any language', LANGUAGES));
+  return h('div', { class: 'filters' }, search, platform, pick('country', 'Any country', COUNTRIES), pick('language', 'Any language', LANGUAGES));
 }
 
 function leadCard(l) {
@@ -129,8 +128,10 @@ function leadCard(l) {
       h('div', { class: 'name' }, l.displayName),
       h('div', { class: 'meta' }, [l.platform, l.followers != null ? num(l.followers) + ' followers' : null, l.country, l.contactEmail].filter(Boolean).join(' · ')),
       l.bio ? h('div', { class: 'meta' }, l.bio.slice(0, 160)) : null),
-    h('div', {}, h('span', { class: 'pill ' + (STAGE_CLASS[l.stage] || '') }, STAGE_LABEL[l.stage] || l.stage),
-      link ? h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', class: 'pill', onclick: (e) => e.stopPropagation() }, 'Open') : null));
+    h('div', { class: 'row', onclick: (e) => e.stopPropagation() },
+      h('select', { 'aria-label': 'Status', class: 'stage ' + (STAGE_CLASS[l.stage] || ''), onchange: (e) => act(() => api('/leads/' + l.id + '/stage', { method: 'POST', body: { stage: e.target.value } }), 'Saved') },
+        ROW_STAGES.map(([k, label]) => h('option', { value: k, selected: l.stage === k }, label))),
+      link ? h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', class: 'pill' }, 'Open') : null));
 }
 
 async function openLead(id) {
@@ -155,12 +156,6 @@ function detail(l) {
     h('h2', {}, l.displayName),
     h('div', { class: 'meta' }, l.platform + ' · ' + num(l.followers) + ' followers · ' + (l.country ? (COUNTRIES.find(([c]) => c === l.country.toUpperCase()) || [0, l.country])[1] : 'country unknown') + ' · found via ' + l.source),
     link ? h('p', {}, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer' }, link)) : null,
-    h('h3', {}, 'Partner stage'),
-    h('p', { class: 'meta' }, 'Update this as your team reaches out. The app never contacts anyone itself.'),
-    h('div', { class: 'row' }, STAGES.map(([k, label]) => h('button', { class: l.stage === k ? 'good' : 'ghost', disabled: l.stage === k,
-      onclick: () => act(() => api('/leads/' + l.id + '/stage', { method: 'POST', body: { stage: k, note: ($('f-note').value.trim() || undefined) } }), 'Marked as ' + label.toLowerCase()) }, label))),
-    h('div', { class: 'field' }, h('label', { for: 'f-note' }, 'Note (optional)'), h('input', { id: 'f-note', maxlength: 400, placeholder: 'e.g. emailed on Monday, waiting for reply', value: l.stageNote || '' })),
-    l.stageBy ? h('p', { class: 'meta' }, 'Last updated by ' + l.stageBy + (l.stageAt ? ' on ' + l.stageAt.slice(0, 10) : '')) : null,
     h('h3', {}, 'Details'),
     h('div', { class: 'field' }, h('label', { for: 'f-email' }, 'Public contact email (only one they publish themselves)'), email),
     h('div', { class: 'field' }, h('label', { for: 'f-country' }, 'Country'), country),
@@ -210,21 +205,6 @@ function findCard() {
     } catch (e) { out.textContent = e.message; toast(e.message, true); go.disabled = false; }
   });
   return box;
-}
-
-/** Adding a partner you found yourself: paste one or more links. */
-function linksCard() {
-  const out = h('div', { class: 'meta' });
-  const urls = h('textarea', { placeholder: 'Paste links, one per line: YouTube, Telegram, TikTok, Instagram, Facebook, X, Reddit or a website' });
-  const add = h('button', { class: 'ghost', onclick: async () => {
-    out.textContent = 'Working…';
-    try {
-      const r = await api('/discovery/urls', { method: 'POST', body: { urls: urls.value.split(/\s*\n\s*/).map((x) => x.trim()).filter(Boolean) } });
-      out.replaceChildren(...r.results.map((x) => h('div', {}, (x.status === 'saved' ? '✓ ' : '✗ ') + x.url + (x.note ? ' — ' + x.note : ''))));
-      urls.value = ''; loadStats();
-    } catch (e) { out.textContent = e.message; toast(e.message, true); }
-  } }, 'Add links');
-  return h('details', { class: 'card' }, h('summary', {}, 'Add partners by link'), urls, h('div', { class: 'row' }, add), out);
 }
 
 start();

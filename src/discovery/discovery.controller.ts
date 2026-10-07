@@ -15,9 +15,6 @@ class AiSearchDto {
   @IsOptional() @IsString() @MaxLength(200) focus?: string;
   @IsOptional() @IsInt() @Min(3) @Max(25) limit?: number;
 }
-class UrlsDto {
-  @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) @MaxLength(500, { each: true }) urls: string[];
-}
 @Controller('discovery')
 @UseGuards(ApiKeyGuard)
 @Throttle({ default: { limit: 20, ttl: 60_000 } })
@@ -50,12 +47,5 @@ export class DiscoveryController {
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   aiStatus(@Param('id') id: string) {
     return this.aiDiscovery.get(id);
-  }
-
-  @Post('urls')
-  async urls(@Req() req: any, @Body() dto: UrlsDto) {
-    const results = await this.discovery.addUrls(dto.urls);
-    await this.audit.log(req.actor, 'DISCOVERY_URLS', undefined, { count: dto.urls.length });
-    return { results };
   }
 }

@@ -13,15 +13,15 @@ const lead = async (handle: string) => c.db.lead.findFirstOrThrow({ where: { han
 
 describe('auth', () => {
   it('refuses missing and wrong keys on every protected route', async () => {
-    for (const [method, path] of [['GET', '/leads'], ['GET', '/leads/stats'], ['POST', '/discovery/urls'], ['POST', '/discovery/ai']]) {
+    for (const [method, path] of [['GET', '/leads'], ['GET', '/leads/stats'], ['POST', '/discovery/ai']]) {
       expect((await c.api(path, { method, key: null })).status).toBe(401);
       expect((await c.api(path, { method, key: 'wrong-key-wrong-key-wrong' })).status).toBe(401);
     }
   });
-  it('keeps only the health check public, and has no scoring, review, CSV, YouTube-search or email-sending endpoints at all', async () => {
+  it('keeps only the health check public, and has no scoring, review, CSV, YouTube-search, add-by-link or email-sending endpoints at all', async () => {
     expect((await c.api('/health', { key: null })).status).toBe(200);
     expect((await c.api('/leads/export')).status).toBe(400); // no longer an export route: it is treated as a lead id
-    for (const path of ['/unsubscribe/x', '/outreach/x', '/classification/run', '/leads/00000000-0000-4000-8000-000000000000/approve', '/leads/00000000-0000-4000-8000-000000000000/rescore', '/discovery/import', '/discovery/youtube']) {
+    for (const path of ['/unsubscribe/x', '/outreach/x', '/classification/run', '/leads/00000000-0000-4000-8000-000000000000/approve', '/leads/00000000-0000-4000-8000-000000000000/rescore', '/discovery/import', '/discovery/youtube', '/discovery/urls']) {
       expect((await c.api(path, { method: 'POST' })).status).toBe(404);
     }
   });
@@ -45,17 +45,6 @@ describe('import & dedupe', () => {
   it('treats handles case-insensitively', async () => {
     await importLeads(c, [row('MixedCase')]); await importLeads(c, [row('mixedcase')]);
     expect(await c.db.lead.count()).toBe(1);
-  });
-  it('refuses private and non-http URLs instead of fetching them', async () => {
-    const r = await c.api('/discovery/urls', { method: 'POST', body: { urls: ['http://169.254.169.254/latest/meta-data/', 'http://localhost:4100/', 'http://10.0.0.5/', 'file:///etc/passwd'] } });
-    expect(r.status).toBe(201);
-    expect(r.json.results.every((x: any) => x.status === 'skipped')).toBe(true);
-    expect(await c.db.lead.count()).toBe(0);
-  });
-  it('saves links for platforms that cannot be read automatically', async () => {
-    const r = await c.api('/discovery/urls', { method: 'POST', body: { urls: ['https://www.tiktok.com/@tipsfc'] } });
-    expect(r.json.results[0]).toMatchObject({ status: 'saved' });
-    expect(await lead('tipsfc')).toMatchObject({ stage: 'FOUND' });
   });
 });
 
