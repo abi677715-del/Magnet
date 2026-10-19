@@ -16,6 +16,8 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   // The dashboard is plain files served from the same origin, so no CORS is needed.
   app.useStaticAssets(join(__dirname, '..', 'public'), { prefix: '/dashboard' });
+  // The bare address of the site opens the dashboard instead of a "Cannot GET /" error.
+  app.getHttpAdapter().get('/', (_req: unknown, res: { redirect: (code: number, to: string) => void }) => res.redirect(302, '/dashboard/'));
 
   if ((process.env.ADMIN_API_KEY ?? '').length < 16) {
     console.warn('WARNING: ADMIN_API_KEY is missing or shorter than 16 characters — every API call will be refused.');
